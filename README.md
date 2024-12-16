@@ -52,6 +52,6 @@ git clone https://github.com/TAskAster339/YouTube_Video_Downloader
    ```
      python3 main.py
    ```
-5. Now you can find your downloaded videos in the "result" folder.
+5. Now you can find your downloaded videos in the **"result"** folder.
 
-6. The links in the "links.txt" file will be removed, so please make sure you no longer need those links.
+6. The links in the **"links.txt"** file will be removed, so please make sure you no longer need those links.
