@@ -1,11 +1,25 @@
 import os
 
 
+def find_txt_files(path):
+    for f in os.listdir(path):
+        if f.endswith(".txt"):
+            yield f
+
+
 if __name__ == "__main__":
 
     links = []
 
     try:
+        for txt in find_txt_files("./"):
+            if txt == "error_copy_of_links.txt":
+                continue
+
+            with open(txt, "r") as file:
+                for line in file.readlines():
+                    links.append(line.strip())
+
         with open("links.txt", "r") as file:
             for line in file.readlines():
                 links.append(line.strip())
