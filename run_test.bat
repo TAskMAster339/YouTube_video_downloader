@@ -1,0 +1,1 @@
+.\venv\Scripts\activate && pytest test.py && pause
