@@ -1,6 +1,6 @@
 __all__ = []
 
-import os
+import pathlib
 
 from src.main import (
     check_link,
@@ -14,16 +14,18 @@ def test_find_txt_files():
     txt_files = {"links.txt"}
 
     for i in range(1, 100):
-        name = f"test{i}.txt"
-        with open(name, "w"):
+        file_name = f"test{i}.txt"
+        file_path = pathlib.Path(file_name)
+
+        with file_path.open("w"):
             pass
-        txt_files.add(name)
+        txt_files.add(file_name)
 
     for txt in find_txt_files("./"):
-        assert txt in txt_files
+        assert txt in txt_files  # noqa: S101
 
     for i in range(1, 100):
-        os.remove(f"./test{i}.txt")
+        pathlib.Path.unlink(f"./test{i}.txt")
 
 
 def test_check_links():
@@ -44,17 +46,17 @@ def test_check_links():
         "https;//youtu.be/afjkalsfja;sf",
         "https:\\\\yotu.be/fdjalf;af",
         "https://www.youtube.ru",
-        "https://www.youtube.сom",
+        "https://www.youtube.сom",  # noqa: RUF001
         "https://youtu,be/comhttps://youtu.be.com/djfla",
         "fajsfhasfasj;fasfjkas;fjaskfajgkjsdkgl;asgjk",
         " https://youtu.be/cofjdafja",
         "     ",
     ]
     for link in correct_links:
-        assert check_link(link)
+        assert check_link(link)  # noqa: S101
 
     for link in incorrect_links:
-        assert not check_link(link)
+        assert not check_link(link)  # noqa: S101
 
 
 def test_read_links_from_txt_to_list():
@@ -63,8 +65,9 @@ def test_read_links_from_txt_to_list():
     list_of_txt_files = []
 
     for i in range(100):
-        name = f"test{i}.txt"
-        with open(name, "w") as file:
+        file_name = f"test{i}.txt"
+        file_path = pathlib.Path(file_name)
+        with file_path.open("w") as file:
             text = ""
             if i % 3 == 0:  # other text
                 text = "some text for example"
@@ -77,26 +80,27 @@ def test_read_links_from_txt_to_list():
 
         if i % 3 == 1:
             links_from_txt_files.add(text)
-            correct_list_of_txt_files.add(name)
+            correct_list_of_txt_files.add(file_name)
 
     read_links = read_links_from_txt_to_list("./", list_of_txt_files)
 
     for url in read_links:
-        assert url in links_from_txt_files
+        assert url in links_from_txt_files  # noqa: S101
 
     for file in list_of_txt_files:
-        assert file in correct_list_of_txt_files
+        assert file in correct_list_of_txt_files  # noqa: S101
 
     for txt in range(100):
-        name = f"test{txt}.txt"
-        os.remove("./" + name)
+        file_name = f"./test{txt}.txt"
+        pathlib.Path.unlink(file_name)
 
 
 def test_clean_txt_files():
     txt_files = []
     for i in range(100):
-        name = f"test{i}.txt"
-        with open(name, "w") as file:
+        file_name = f"test{i}.txt"
+        file_path = pathlib.Path(file_name)
+        with file_path.open("w") as file:
             if i % 3 == 0:  # other text
                 text = "some text for example"
             elif i % 3 == 1:  # correct link
@@ -105,15 +109,16 @@ def test_clean_txt_files():
                 text = "https://www.youtube.ru"
 
             file.write(text)
-        txt_files.append(name)
+        txt_files.append(file_name)
 
     clean_txt_files(txt_files)
 
     for i in range(100):
-        name = f"test{i}.txt"
-        with open(name) as file:
-            assert file.read() == ""
+        file_name = f"test{i}.txt"
+        file_path = pathlib.Path(file_name)
+        with file_path.open() as file:
+            assert file.read() == ""  # noqa: S101
 
     for i in range(100):
-        name = f"test{i}.txt"
-        os.remove("./" + name)
+        file_name = f"./test{i}.txt"
+        pathlib.Path.unlink(file_name)
