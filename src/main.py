@@ -1,5 +1,7 @@
+__all__ = []
+
+
 import os
-from typing import List
 
 
 def find_txt_files(path: str):
@@ -16,7 +18,7 @@ def check_link(link: str) -> bool:
     return True
 
 
-def read_links_from_txt_to_list(path: str, txt_names: List[str]) -> List[str]:
+def read_links_from_txt_to_list(path: str, txt_names: list[str]) -> list[str]:
     links = []
 
     for txt in find_txt_files(path):
@@ -30,11 +32,13 @@ def read_links_from_txt_to_list(path: str, txt_names: List[str]) -> List[str]:
                 if check_link(line):
                     links.append(line.strip())
         if links_length != len(links):
-            txt_names.append(txt)  # append only when we download at least 1 link from this txt
+            txt_names.append(
+                txt
+            )  # append only when we download at least 1 link from this txt
     return links
 
 
-def clean_txt_files(txt_files_list: List[str]) -> None:
+def clean_txt_files(txt_files_list: list[str]) -> None:
     for txt_file in txt_files_list:
         with open(txt_file, "w"):
             pass
@@ -42,11 +46,12 @@ def clean_txt_files(txt_files_list: List[str]) -> None:
 
 if __name__ == "__main__":
     txt_list = []  # all txt files names with links
+    TXT_FILE_PATH = "../"
     try:
-        video_links = read_links_from_txt_to_list("./", txt_list)
+        video_links = read_links_from_txt_to_list(TXT_FILE_PATH, txt_list)
 
         for video in video_links:
-            os.system('.\\yt-dlp.exe -P ".\\result" ' + video)
+            os.system('..\\yt-dlp.exe -P "..\\result" ' + video)
 
         clean_txt_files(txt_list)
 

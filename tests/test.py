@@ -1,5 +1,13 @@
-from main import *
+__all__ = []
+
 import os
+
+from src.main import (
+    check_link,
+    clean_txt_files,
+    find_txt_files,
+    read_links_from_txt_to_list,
+)
 
 
 def test_find_txt_files():
@@ -7,11 +15,11 @@ def test_find_txt_files():
 
     for i in range(1, 100):
         name = f"test{i}.txt"
-        with open(name, 'w'):
+        with open(name, "w"):
             pass
         txt_files.add(name)
 
-    for txt in find_txt_files('./'):
+    for txt in find_txt_files("./"):
         assert txt in txt_files
 
     for i in range(1, 100):
@@ -29,7 +37,7 @@ def test_check_links():
         "https://youtu.be/Lf96N0zC5hk?si=EtoU6ltjdMYZSudx",
         "https://youtu.be/7Ww30VkgvMI?si=3gh6YrH8BVrbjhSH",
         "https://youtu.be/fNwIbJGq_ug?si=owNyuY7Alu5sDHbK",
-        "https://youtu.be/mYECrRYbzbQ?si=HNdlFGLk-rOdXwtB"
+        "https://youtu.be/mYECrRYbzbQ?si=HNdlFGLk-rOdXwtB",
     ]
     incorrect_links = [
         "http://www.youtube.com/jfkaljf;af",
@@ -37,12 +45,10 @@ def test_check_links():
         "https:\\\\yotu.be/fdjalf;af",
         "https://www.youtube.ru",
         "https://www.youtube.сom",
-        "https://youtu,be/com"
-        "https://youtu.be.com/djfla"
-        "",
+        "https://youtu,be/comhttps://youtu.be.com/djfla",
         "fajsfhasfasj;fasfjkas;fjaskfajgkjsdkgl;asgjk",
         " https://youtu.be/cofjdafja",
-        "     "
+        "     ",
     ]
     for link in correct_links:
         assert check_link(link)
@@ -58,7 +64,7 @@ def test_read_links_from_txt_to_list():
 
     for i in range(100):
         name = f"test{i}.txt"
-        with open(name, 'w') as file:
+        with open(name, "w") as file:
             text = ""
             if i % 3 == 0:  # other text
                 text = "some text for example"
@@ -90,7 +96,7 @@ def test_clean_txt_files():
     txt_files = []
     for i in range(100):
         name = f"test{i}.txt"
-        with open(name, 'w') as file:
+        with open(name, "w") as file:
             if i % 3 == 0:  # other text
                 text = "some text for example"
             elif i % 3 == 1:  # correct link
@@ -105,7 +111,7 @@ def test_clean_txt_files():
 
     for i in range(100):
         name = f"test{i}.txt"
-        with open(name, "r") as file:
+        with open(name) as file:
             assert file.read() == ""
 
     for i in range(100):
