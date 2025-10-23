@@ -2,11 +2,13 @@
 
 <div align="center">
 
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.13+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![yt-dlp](https://img.shields.io/badge/yt--dlp-latest-red.svg)
+![PyQt](https://img.shields.io/badge/PyQt-5/6-green.svg)
+![Tests](https://img.shields.io/badge/tests-pytest-yellow.svg)
 
-**A simple, fast, and user-friendly command-line tool for downloading YouTube videos**
+**A powerful desktop application for downloading YouTube videos with an intuitive GUI interface**
 
 [Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Configuration](#%EF%B8%8F-configuration) • [Contributing](#-contributing)
 
@@ -16,16 +18,21 @@
 
 ## 📖 About
 
-YouTube Video Downloader is a lightweight Python script built on top of the powerful [yt-dlp](https://github.com/yt-dlp/yt-dlp) library. It provides an effortless way to batch download videos from YouTube with minimal setup and maximum convenience.
+YouTube Video Downloader is a versatile Python application that combines the power of [yt-dlp](https://github.com/yt-dlp/yt-dlp) with modern graphical and command-line interfaces. Download individual videos, entire playlists, or use batch mode with both GUI and CLI modes for maximum flexibility.
 
 ### ✨ Features
 
-- 📥 **Batch downloading** - Download multiple videos at once
-- 🚀 **Fast and reliable** - Powered by yt-dlp
-- 📝 **Flexible input** - Supports both space and newline-separated URLs
-- 🔄 **Auto-cleanup** - Automatically clears the links file after successful downloads
-- 💻 **Cross-platform** - Works on Windows, macOS, and Linux
-- 🎯 **Simple interface** - No complex configuration required
+- 🎨 **Modern GUI Interface** - Intuitive PyQt5/PyQt6 desktop application
+- 📹 **Multiple Download Modes** - Single video, playlist, or batch downloading
+- 🎬 **Format Selection** - Choose video formats (MP4) or audio extraction (MP3)
+- 📊 **Quality Options** - Select from best, medium, or lowest quality
+- 🔄 **Batch Downloading** - Process multiple URLs from `links.txt`
+- 📋 **File Management** - View, refresh, and delete downloaded files directly from the app
+- ⚙️ **Dark Mode** - Easy-on-the-eyes dark theme
+- 🌍 **Cross-platform** - Works on Windows, macOS, and Linux
+- 🚀 **Fast and Reliable** - Powered by yt-dlp with automatic error handling
+- 📝 **Progress Tracking** - Real-time download progress and status updates
+- 🛠️ **Customizable Settings** - Configure download location and preferences via GUI
 
 ---
 
@@ -33,35 +40,76 @@ YouTube Video Downloader is a lightweight Python script built on top of the powe
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- pip (Python package manager)
+- **Python 3.13+**
+- **pip** (Python package manager)
+- **FFmpeg** (required for audio conversion and video processing)
 
-### Steps
+### System-Specific Setup
+
+#### Installing FFmpeg
+
+**Windows:**
+
+Download from [FFmpeg Builds](https://ffmpeg.org/download.html) or use Chocolatey:
+
+```bash
+choco install ffmpeg
+```
+
+Verify installation: `ffmpeg -version`
+
+**macOS:**
+
+```bash
+brew install ffmpeg
+```
+
+**Linux (Ubuntu/Debian):**
+
+```bash
+sudo apt update
+sudo apt install ffmpeg
+```
+
+### Python Installation Steps
 
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/TAskMAster339/YouTube_Video_Downloader.git
-   cd YouTube_Video_Downloader
+   git clone https://github.com/TAskMAster339/YouTube_video_downloader.git
+   cd YouTube_video_downloader
    ```
 
-2. **Install dependencies**
+2. **Create a virtual environment** (recommended)
+
+   ```bash
+   # Windows
+   python -m venv venv
+   venv\Scripts\activate
+
+   # macOS/Linux
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies**
 
    ```bash
    pip install -r requirements.txt
    ```
 
-   Or install yt-dlp directly:
+   **Key Dependencies:**
 
-   ```bash
-   pip install yt-dlp
-   ```
+   - `yt-dlp` - YouTube video downloader
+   - `PyQt5` or `PyQt6` - GUI framework
+   - `pytest` - Testing framework
+   - `pytest-mock` - Mocking library for tests
 
 ---
 
 ## 📚 Usage
 
-### Quick Start
+### Quick Start (Command Line)
 
 1. **Prepare your links file**
 
@@ -110,18 +158,59 @@ YouTube Video Downloader is a lightweight Python script built on top of the powe
 
    Downloaded videos will be saved in the `result/` directory.
 
-### Command-Line Options
+### 🎨 GUI Usage
+
+#### Running the GUI Application
 
 ```bash
-# Basic usage
-python main.py
+# Windows
+py src/app.py
 
-# Custom links file (if implemented)
-python main.py --links custom_links.txt
-
-# Custom output directory (if implemented)
-python main.py --output downloads/
+# macOS/Linux
+python3 src/app.py
 ```
+
+#### Interface Overview
+
+The GUI provides an intuitive interface for all downloading needs:
+
+**Main Window Features:**
+
+- **URL Input Field** - Paste YouTube video or playlist URLs
+- **Format Selection** - Choose between:
+  - MP4 Video (best quality audio + video)
+  - MP3 Audio (audio only)
+- **Quality Selection** - Select quality tier:
+  - **Best** - Highest quality (larger file size)
+  - **Semi** - Medium quality (balanced)
+  - **Worst** - Lowest quality (smallest file size)
+- **Progress Bar** - Real-time download progress
+- **Download Button** - Start the download process
+- **File List** - View all downloaded files
+- **Delete Button** - Remove selected files
+- **Settings Button** - Configure app preferences
+- **Refresh Button** - Update file list
+
+#### How to Download
+
+1. **Single Video:**
+
+   - Paste a YouTube video URL into the input field
+   - Select format (MP4 or MP3) and quality
+   - Click "Download Video" or "Download Audio"
+   - Monitor progress in the progress bar
+
+2. **Playlist:**
+
+   - Paste a YouTube playlist URL
+   - Select format and quality
+   - Click "Download Video" or "Download Audio"
+   - App downloads all videos sequentially
+
+3. **Batch Processing:**
+   - Fill `links.txt` with multiple URLs (one per line or space-separated)
+   - Click "Batch Download"
+   - App processes all URLs and clears the file upon completion
 
 ---
 
@@ -131,7 +220,11 @@ python main.py --output downloads/
 
 ```
 YouTube_Video_Downloader/
-├── main.py           # Main script
+├── src/
+│   ├── app.py        # gui application
+│   ├── local.py      # local yt-dlp usage
+│   ├── main.py       # Main script
+├── tests/            # Tests dir
 ├── links.txt         # Input file with video URLs
 ├── result/           # Downloaded videos directory
 ├── requirements.txt  # Python dependencies
