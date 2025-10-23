@@ -1,66 +1,116 @@
-__all__ = []
+from pathlib import Path
+
+import yt_dlp
 
 
-import os
-import pathlib
 
-ROOT_PATH = pathlib.Path(__file__).parent.parent
+def read_links(filename: str = "links.txt") -> list[str]:
+    """
+    Читает ссылки из файла.
+
+    Args:
+        filename: Путь к файлу со ссылками
+
+    Returns:
+        Список ссылок
+    """  # noqa: RUF002
+    if not Path.exists(filename):
+        raise FileNotFoundError(f"File {filename} not found")  # noqa: TRY003
+
+    with Path.open(filename) as f:
+        content = f.read()
+        # Поддержка разделителей: переносы и пробелы
+        links = content.replace("\n", " ").split()
+        return [link.strip() for link in links if link.strip()]
 
 
-def find_txt_files(path: str):
-    for f in pathlib.Path.iterdir(path):
-        if f.name.endswith(".txt"):
-            yield f
+def download_video(url: str, output_dir: str = "result") -> bool:
+    """
+    Скачивает видео по URL.
 
+    Args:
+        url: URL видео
+        output_dir: Директория для сохранения
 
-def check_link(link: str) -> bool:
-    if link[0:8] != "https://":
+    Returns:
+        True если успешно, False иначе
+    """
+    ydl_opts = {
+        "format": "best",
+        "outtmpl": f"{output_dir}/%(title)s.%(ext)s",
+        "quiet": True,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+    except Exception as e:
+        print(f"Error downloading {url}: {e}")
         return False
-    return not (link[8:24] != "www.youtube.com/" and link[8:17] != "youtu.be/")
+    else:
+        return True
 
 
-def read_links_from_txt_to_list(path: str, txt_names: list[str]) -> list[str]:
-    links = []
+def clear_links_file(filename: str = "links.txt") -> None:
+    """
+    Очищает файл со ссылками.
 
-    for txt in find_txt_files(path):
-        if txt == "error_copy_of_links.txt":
-            continue
-
-        links_length = len(links)
-
-        file_path = pathlib.Path(txt)
-
-        with file_path.open() as file:
-            for line in file.readlines():
-                if check_link(line):
-                    links.append(line.strip())  # noqa: PERF401
-        if links_length != len(links):
-            txt_names.append(
-                txt,
-            )  # append only when we download at least 1 link from this txt
-    return links
+    Args:
+        filename: Путь к файлу
+    """  # noqa: RUF002
+    with Path.open(filename, "w") as f:
+        f.write("")
 
 
-def clean_txt_files(txt_files_list: list[str]) -> None:
-    for txt_file in txt_files_list:
-        file_path = pathlib.Path(txt_file)
-        with file_path.open("w"):
-            pass
+def ensure_result_directory(directory: str = "result") -> None:
+    """
+    Создаёт директорию для результатов, если её нет.
+
+    Args:
+        directory: Путь к директории
+    """
+    Path(directory).mkdir(exist_ok=True)
+
+
+def main():
+    """Главная функция."""
+    try:
+        # Создаём директорию для результатов
+        ensure_result_directory()
+
+        # Читаем ссылки
+        links = read_links()
+
+        if not links:
+            print("No links found in links.txt")
+            return
+
+        print(f"Found {len(links)} links to download")
+
+        # Скачиваем каждое видео
+        successful = 0
+        failed = 0
+
+        for i, link in enumerate(links, 1):
+            print(f"Downloading {i}/{len(links)}: {link}")
+            if download_video(link):
+                successful += 1
+            else:
+                failed += 1
+
+        print("\nDownload complete!")
+        print(f"Successful: {successful}")
+        print(f"Failed: {failed}")
+
+        # Очищаем файл ссылок
+        clear_links_file()
+        print("Links file cleared")
+
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
 
 
 if __name__ == "__main__":
-    print(ROOT_PATH)
-    txt_list = []  # all txt files names with links
-    try:
-        video_links = read_links_from_txt_to_list(ROOT_PATH, txt_list)
-
-        for video in video_links:
-            os.system(f'{ROOT_PATH}\\yt-dlp.exe -P "{ROOT_PATH}\\result" ' + video)  # noqa: S605
-
-        clean_txt_files(txt_list)
-
-    except Exception as e:
-        print("Some error occurred:\n")
-        print(e)
-
-    print("Process finished")
+    main()

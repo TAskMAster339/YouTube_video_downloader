@@ -7,7 +7,7 @@ import sys
 import yt_dlp
 from PyQt5 import QtCore, QtWidgets
 
-from main import ROOT_PATH
+from src.local import ROOT_PATH
 
 DOWNLOAD_DIR = ROOT_PATH / "result"
 DEAFULT_FONT_SIZE = 16
