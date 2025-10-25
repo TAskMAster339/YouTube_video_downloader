@@ -7,10 +7,24 @@ import sys
 import yt_dlp
 from PyQt5 import QtCore, QtWidgets
 
-from src.local import ROOT_PATH
+ROOT_PATH = pathlib.Path(__file__).parent.parent
 
 DOWNLOAD_DIR = ROOT_PATH / "result"
 DEAFULT_FONT_SIZE = 16
+
+
+def resource_path(relative_path):
+    """Получает абсолютный путь к ресурсу, работает для dev и PyInstaller"""  # noqa: RUF002
+    try:
+        # PyInstaller создает временную папку и сохраняет путь в _MEIPASS
+        base_path = sys._MEIPASS  # noqa: SLF001
+    except AttributeError:
+        base_path = pathlib.Path.parent(pathlib.Path.resolve(__file__))
+    return base_path / pathlib.Path(relative_path)
+
+
+# Используйте эту функцию для получения пути к ffmpeg
+ffmpeg_path = str(resource_path("ffmpeg.exe"))
 
 
 class DropArea(QtWidgets.QListWidget):
@@ -112,6 +126,7 @@ class DownloadWorker(QtCore.QThread):
                     self.progress_changed.emit(100)
 
             ydl_opts = {
+                "ffmpeg_location": str(ffmpeg_path),
                 "outtmpl": str(self.download_dir / "%(title)s.%(ext)s"),
                 "format": self.fmt,  # "best[height<=1080]+bestaudio/best"
                 "progress_hooks": [progress_hook],
