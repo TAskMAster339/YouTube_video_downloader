@@ -36,17 +36,47 @@ YouTube Video Downloader is a versatile Python application that combines the pow
 
 ---
 
-## 🚀 Installation
+## 🚀 Quick Start (Быстрый старт)
 
-### Prerequisites
+### Ready-to-Use Version (Готовая версия)
+
+**🎉 No Python installation needed! Just download and run!**
+
+👉 **[Download Latest Release](https://github.com/TAskMAster339/YouTube_video_downloader/releases/latest)** 👈
+
+Simply download `YouTube_Downloader.exe` and run it. That's it!
+
+## 📥 Installation
+
+### Option 1: Ready-to-Use Executable (Recommended for Users)
+
+1. Go to [Releases](https://github.com/TAskMAster339/YouTube_video_downloader/releases)
+2. Download `YouTube_Downloader.exe` from the latest release
+3. Run the executable
+4. Done! No dependencies needed
+
+**Automatic Updates:**
+
+- Download `update.bat` to the same folder as `YouTube_Downloader.exe`
+- Run `update.bat` to check for and install updates
+- The script will automatically:
+  - Check GitHub for new versions
+  - Download the latest version
+  - Back up the old version
+  - Install the new version
+  - Launch the app
+
+### Option 2: Development Installation (For Developers)
+
+#### Prerequisites
 
 - **Python 3.13+**
 - **pip** (Python package manager)
 - **FFmpeg** (required for audio conversion and video processing)
 
-### System-Specific Setup
+#### System-Specific Setup
 
-#### Installing FFmpeg
+##### Installing FFmpeg
 
 **Windows:**
 
@@ -71,7 +101,7 @@ sudo apt update
 sudo apt install ffmpeg
 ```
 
-### Python Installation Steps
+#### Python Installation Steps
 
 1. **Clone the repository**
 
@@ -170,26 +200,15 @@ py src/app.py
 python3 src/app.py
 ```
 
-#### Interface Overview
+#### Features:
 
-The GUI provides an intuitive interface for all downloading needs:
-
-**Main Window Features:**
-
-- **URL Input Field** - Paste YouTube video or playlist URLs
-- **Format Selection** - Choose between:
-  - MP4 Video (best quality audio + video)
-  - MP3 Audio (audio only)
-- **Quality Selection** - Select quality tier:
-  - **Best** - Highest quality (larger file size)
-  - **Semi** - Medium quality (balanced)
-  - **Worst** - Lowest quality (smallest file size)
-- **Progress Bar** - Real-time download progress
-- **Download Button** - Start the download process
-- **File List** - View all downloaded files
-- **Delete Button** - Remove selected files
-- **Settings Button** - Configure app preferences
-- **Refresh Button** - Update file list
+- **Drag & Drop URLs**: Paste YouTube links into the drop area
+- **Select Format**: Choose between MP4 (video) or MP3 (audio)
+- **Select Quality**: Choose quality tier (1080p, 720p, 480p)
+- **Download**: Click "Download All" to start
+- **Progress Tracking**: See real-time progress for each video
+- **Folder Selection**: Change download location anytime
+- **File Management**: View and delete downloaded files
 
 #### How to Download
 
@@ -211,6 +230,22 @@ The GUI provides an intuitive interface for all downloading needs:
    - Fill `links.txt` with multiple URLs (one per line or space-separated)
    - Click "Batch Download"
    - App processes all URLs and clears the file upon completion
+
+---
+
+## 🔄 Automatic Updates
+
+The project automatically checks for yt-dlp updates and creates new releases on GitHub.
+
+### For Users:
+
+- Check the [Releases page](https://github.com/TAskMAster339/YouTube_video_downloader/releases) regularly
+- Or use `update.bat` script to auto-update
+
+### For Developers:
+
+- Updates are triggered automatically when new yt-dlp versions are released
+- GitHub Actions workflow handles building and releasing
 
 ---
 
@@ -254,43 +289,27 @@ ydl_opts = {
 
 ## 🔧 Troubleshooting
 
-### Common Issues
+### "Video unavailable" error
 
-**Problem:** `ModuleNotFoundError: No module named 'yt_dlp'`
+- Some videos have geographic restrictions
+- Some videos are age-restricted or private
+- Update yt-dlp to the latest version
 
-**Solution:** Install yt-dlp:
+### Download fails
 
-```bash
-pip install yt-dlp
-```
+- Check your internet connection
+- Try a different video
+- Update yt-dlp: `pip install --upgrade yt-dlp`
 
----
+### No audio/video found
 
-**Problem:** Video download fails with "Video unavailable"
+- YouTube might have changed their format
+- This usually resolves itself when yt-dlp is updated
 
-**Solution:**
+### FFmpeg not found
 
-- Check if the video is public and accessible
-- Update yt-dlp to the latest version: `pip install --upgrade yt-dlp`
-- Some videos may have regional restrictions
-
----
-
-**Problem:** Permission error when writing to `result/` directory
-
-**Solution:**
-
-- Ensure you have write permissions in the project directory
-- Run the script with appropriate permissions (avoid using `sudo` unless necessary)
-
----
-
-**Problem:** `links.txt` file not found
-
-**Solution:**
-
-- Create the file in the same directory as `main.py`
-- Check the file name (case-sensitive on Linux/macOS)
+- Make sure FFmpeg is installed
+- Add FFmpeg to your system PATH
 
 ---
 
@@ -335,11 +354,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## ⚠️ Disclaimer
 
-This tool is for educational and personal use only. Please respect YouTube's Terms of Service and copyright laws. Do not use this tool to:
+This tool is for **educational and personal use only**. Please respect YouTube's Terms of Service and copyright laws.
+
+**Do NOT use this tool to:**
 
 - Download copyrighted content without permission
 - Violate YouTube's Terms of Service
-- Redistribute downloaded content
+- Redistribute downloaded content without permission
 
 Always ensure you have the right to download and use any content.
 
@@ -347,27 +368,31 @@ Always ensure you have the right to download and use any content.
 
 ## 🙏 Acknowledgments
 
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - The powerful library that makes this possible
+- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** - The amazing library that makes this possible
+- **[PyQt5](https://www.riverbankcomputing.com/software/pyqt/)** - For the GUI framework
+- **[FFmpeg](https://ffmpeg.org/)** - For media processing
 - All contributors who have helped improve this project
 
 ---
 
-## 📧 Contact
+## 📧 Contact & Support
 
-**Project Maintainer:** TAskMAster339
-
-- GitHub: [@TAskMAster339](https://github.com/TAskMAster339)
-- Project Link: [https://github.com/TAskMAster339/YouTube_Video_Downloader](https://github.com/TAskMAster339/YouTube_Video_Downloader)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/TAskMAster339/YouTube_video_downloader/issues)
+- **GitHub Discussions**: [Ask questions or discuss ideas](https://github.com/TAskMAster339/YouTube_video_downloader/discussions)
 
 ---
 
-## 📊 Project Status
+## 🌟 Show Your Support
 
-![GitHub last commit](https://img.shields.io/github/last-commit/TAskMAster339/YouTube_Video_Downloader)
-![GitHub issues](https://img.shields.io/github/issues/TAskMAster339/YouTube_Video_Downloader)
-![GitHub pull requests](https://img.shields.io/github/issues-pr/TAskMAster339/YouTube_Video_Downloader)
+If you find this project helpful, please consider:
 
-**Status:** Done 🚀
+- ⭐ Giving it a star on GitHub
+- 🐛 Reporting bugs or suggesting improvements
+- 🤝 Contributing code or documentation
+
+---
+
+**Last Updated:** October 25, 2025
 
 ---
 
@@ -375,6 +400,6 @@ Always ensure you have the right to download and use any content.
 
 **⭐ If you find this project useful, please consider giving it a star!**
 
-Made with ❤️ by TAskMAster339
+Made with ❤️ by [TAskMAster339](https://github.com/TAskMAster339)
 
 </div>
