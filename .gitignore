@@ -1,8 +1,12 @@
 # result vidios
 result/
+failed_downloads.txt
+*.log
 
 # ffmpeg
 ffmpeg.exe
+ffmpeg
+ffmpeg.exe~
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -37,6 +41,7 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+*.spec.bak
 !app.spec
 
 # Installer logs

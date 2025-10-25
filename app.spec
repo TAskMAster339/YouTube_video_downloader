@@ -3,9 +3,16 @@
 a = Analysis(
     ['src/app.py'],
     pathex=[],
-    binaries=[('ffmpeg.exe', '.')],
+    binaries=[('ffmpeg.exe', '.')],  # FFmpeg включается в сборку
     datas=[],
-    hiddenimports=['yt_dlp.compat._legacy'],
+    hiddenimports=[
+        'yt_dlp.compat._legacy',
+        'yt_dlp.compat',
+        'yt_dlp.downloader',
+        'yt_dlp.extractor',
+        'yt_dlp.postprocessor',
+        'winsound',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -28,7 +35,7 @@ exe = EXE(
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,  # ← Измените на True для отладки
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -36,4 +43,3 @@ exe = EXE(
     entitlements_file=None,
     icon='',
 )
-
