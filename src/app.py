@@ -1,5 +1,6 @@
 __all__ = []
 
+import os
 import pathlib
 import re
 import sys
@@ -9,7 +10,6 @@ from PyQt5 import QtCore, QtWidgets
 
 ROOT_PATH = pathlib.Path(__file__).parent.parent
 
-DOWNLOAD_DIR = ROOT_PATH / "result"
 DEAFULT_FONT_SIZE = 16
 
 
@@ -23,6 +23,21 @@ def resource_path(relative_path):
     return base_path / pathlib.Path(relative_path)
 
 
+def get_app_directory():
+    """Получает директорию приложения (для exe и для исходников)"""
+    if getattr(sys, "frozen", False):
+        # Запущено из PyInstaller (.exe)
+        app_dir = pathlib.Path(sys.executable).parent
+    else:
+        # Запущено из исходников (.py)
+        app_dir = pathlib.Path(__file__).parent.parent
+    return app_dir
+
+
+APP_DIR = get_app_directory()
+DOWNLOAD_DIR = APP_DIR / "result"
+
+
 def get_ffmpeg_path():
     """Получает путь к FFmpeg (ленивая инициализация)"""
     try:
@@ -33,6 +48,32 @@ def get_ffmpeg_path():
         pass
     # Fallback: попытаться использовать системный FFmpeg
     return "ffmpeg"
+
+
+def ensure_download_dir_exists():
+    """
+    Гарантирует что директория для загрузок существует.
+    Создает её если нужно с полной обработкой ошибок.
+    """  # noqa: RUF002
+    try:
+        if not DOWNLOAD_DIR.exists():
+            print(f"[*] Creating download directory: {DOWNLOAD_DIR}")
+            DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+            print("[+] Directory created successfully")
+
+        # Проверяем разрешения
+        if not os.access(DOWNLOAD_DIR, os.W_OK):
+            print("[!] No write permission")
+            return False
+
+    except PermissionError as e:
+        print(f"[!] Permission denied: {e}")
+        return False
+    except Exception as e:
+        print(f"[!] Error: {e}")
+        return False
+    else:
+        return True
 
 
 class DropArea(QtWidgets.QListWidget):
@@ -454,6 +495,7 @@ class MainWindow(QtWidgets.QWidget):
 
 
 if __name__ == "__main__":
+    ensure_download_dir_exists()
     app = QtWidgets.QApplication(sys.argv)
     app.setStyle("Fusion")
     window = MainWindow()
