@@ -63,7 +63,7 @@ jobs:
         run: |
           $current = "${{ needs.check-update.outputs.current_version }}"
           $latest = "${{ needs.check-update.outputs.latest_version }}"
-          (Get-Content requirements.txt) -replace "yt-dlp==$current", "yt-dlp=$latest" | Set-Content requirements.txt
+          (Get-Content requirements.txt) -replace "yt-dlp==$current", "yt-dlp==$latest" | Set-Content requirements.txt
           echo "Updated: yt-dlp $current → $latest"
           cat requirements.txt | findstr yt-dlp
 
