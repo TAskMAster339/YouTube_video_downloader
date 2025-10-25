@@ -240,7 +240,7 @@ The project automatically checks for yt-dlp updates and creates new releases on 
 ### For Users:
 
 - Check the [Releases page](https://github.com/TAskMAster339/YouTube_video_downloader/releases) regularly
-- Or use `update.bat` script to auto-update
+- Or use `Обновить(приложение).bat` script to auto-update
 
 ### For Developers:
 
