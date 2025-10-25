@@ -23,8 +23,16 @@ def resource_path(relative_path):
     return base_path / pathlib.Path(relative_path)
 
 
-# Используйте эту функцию для получения пути к ffmpeg
-ffmpeg_path = str(resource_path("ffmpeg.exe"))
+def get_ffmpeg_path():
+    """Получает путь к FFmpeg (ленивая инициализация)"""
+    try:
+        ffmpeg_location = str(resource_path("ffmpeg.exe"))
+        if pathlib.Path(ffmpeg_location).exists():
+            return ffmpeg_location
+    except (AttributeError, FileNotFoundError):
+        pass
+    # Fallback: попытаться использовать системный FFmpeg
+    return "ffmpeg"
 
 
 class DropArea(QtWidgets.QListWidget):
@@ -126,7 +134,7 @@ class DownloadWorker(QtCore.QThread):
                     self.progress_changed.emit(100)
 
             ydl_opts = {
-                "ffmpeg_location": str(ffmpeg_path),
+                "ffmpeg_location": get_ffmpeg_path(),
                 "outtmpl": str(self.download_dir / "%(title)s.%(ext)s"),
                 "format": self.fmt,  # "best[height<=1080]+bestaudio/best"
                 "progress_hooks": [progress_hook],

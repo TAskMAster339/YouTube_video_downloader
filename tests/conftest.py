@@ -3,12 +3,11 @@
 import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-import src.app as app_module
-from src.app import MainWindow, DownloadWorker, DropArea
+from src.app import DownloadWorker, DropArea, MainWindow
 
 # Добавляем src в sys.path
 sys.path.insert(0, str((Path(__file__).parent.parent / "src").resolve()))
@@ -16,6 +15,9 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 from PyQt5.QtWidgets import QApplication
 
+# Мокируем get_ffmpeg_path перед импортом app
+with patch("src.app.get_ffmpeg_path", return_value="ffmpeg"):
+    import src.app as app_module
 
 # Глобальный QApplication для всех тестов
 _qapp = None
