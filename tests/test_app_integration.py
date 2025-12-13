@@ -32,8 +32,8 @@ class TestStartDownloadWorkflow:
 
         assert main_window.drop_area.count() == 1
 
-        # Мокируем DownloadWorker
-        mock_worker_class = mocker.patch("src.app.DownloadWorker")
+        # Мокируем DownloadTask
+        mock_worker_class = mocker.patch("src.app.DownloadTask")
         mock_worker = MagicMock()
         mock_worker_class.return_value = mock_worker
 

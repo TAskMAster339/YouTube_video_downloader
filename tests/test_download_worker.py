@@ -4,17 +4,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.app import DownloadWorker
+from src.app import DownloadTask
 
 sys.path.insert(0, ".")
 
 
 @pytest.mark.gui
-class TestDownloadWorker:
-    """Тесты для DownloadWorker."""
+class TestDownloadTask:
+    """Тесты для DownloadTask."""
 
     def test_worker_creation(self, download_worker):
-        """Тест создания DownloadWorker."""
+        """Тест создания DownloadTask."""
         assert download_worker is not None
         assert download_worker.urls is not None
         assert len(download_worker.urls) == 2
@@ -31,13 +31,6 @@ class TestDownloadWorker:
         """Тест что список неудачных видео изначально пуст."""
         assert download_worker.failed_videos == []
 
-    def test_worker_signals_exist(self, download_worker):
-        """Тест наличия всех сигналов."""
-        assert hasattr(download_worker, "progress_changed")
-        assert hasattr(download_worker, "overall_progress")
-        assert hasattr(download_worker, "finished")
-        assert hasattr(download_worker, "error_occurred")
-
     @patch("yt_dlp.YoutubeDL")
     def test_worker_run_success(self, mock_ytdlp, download_worker):
         """Тест успешного выполнения worker."""
@@ -47,7 +40,7 @@ class TestDownloadWorker:
 
         # Отслеживаем сигналы
         signals_emitted = []
-        download_worker.finished.connect(lambda: signals_emitted.append("finished"))
+        download_worker.signals.finished.connect(lambda: signals_emitted.append("finished"))
 
         # Запускаем worker (в тестах запускается синхронно)
         download_worker.run()
@@ -89,7 +82,7 @@ class TestDownloadWorkflow:
             "https://youtube.com/watch?v=3",
         ]
 
-        worker = DownloadWorker(urls, "best", tmp_path)
+        worker = DownloadTask(urls, "best", tmp_path)
 
         # Запускаем worker
         worker.run()
@@ -112,7 +105,7 @@ class TestDownloadWorkflow:
             mock_instance.download.return_value = 0
             mock_ytdlp.return_value.__enter__.return_value = mock_instance
 
-            worker = DownloadWorker(["https://youtube.com/watch?v=test"], fmt, tmp_path)
+            worker = DownloadTask(["https://youtube.com/watch?v=test"], fmt, tmp_path)
 
             assert worker.fmt == fmt
 

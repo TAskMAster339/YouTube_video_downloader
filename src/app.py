@@ -2,28 +2,32 @@ __all__ = []
 
 import os
 import pathlib
+import platform
 import re
+import shutil
+import subprocess
 import sys
 
 import yt_dlp
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import QThreadPool
 
 ROOT_PATH = pathlib.Path(__file__).parent.parent
 
 DEAFULT_FONT_SIZE = 16
 
 
-def resource_path(relative_path):
+def resource_path(relative_path: str) -> pathlib.Path:
     """Получает абсолютный путь к ресурсу, работает для dev и PyInstaller"""  # noqa: RUF002
     try:
         # PyInstaller создает временную папку и сохраняет путь в _MEIPASS
-        base_path = sys._MEIPASS  # noqa: SLF001
+        base_path = pathlib.Path(sys._MEIPASS)  # noqa: SLF001
     except AttributeError:
-        base_path = pathlib.Path.parent(pathlib.Path.resolve(__file__))
+        base_path = pathlib.Path(__file__).resolve().parent.parent
     return base_path / pathlib.Path(relative_path)
 
 
-def get_app_directory():
+def get_app_directory() -> pathlib.Path:
     """Получает директорию приложения (для exe и для исходников)"""
     if getattr(sys, "frozen", False):
         # Запущено из PyInstaller (.exe)
@@ -41,12 +45,20 @@ DOWNLOAD_DIR = APP_DIR / "result"
 def get_ffmpeg_path():
     """Получает путь к FFmpeg (ленивая инициализация)"""
     try:
-        ffmpeg_location = str(resource_path("ffmpeg.exe"))
-        if pathlib.Path(ffmpeg_location).exists():
-            return ffmpeg_location
-    except (AttributeError, FileNotFoundError):
-        pass
-    # Fallback: попытаться использовать системный FFmpeg
+        ffmpeg_path = resource_path("ffmpeg.exe")
+        if ffmpeg_path.exists():
+            print(f"Найден bundled FFmpeg: {ffmpeg_path}")
+            return str(ffmpeg_path)
+    except (AttributeError, FileNotFoundError, TypeError) as e:
+        print(f"Ошибка: {e}")
+
+    # Fallback
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        print(f"Найден системный FFmpeg: {system_ffmpeg}")
+        return system_ffmpeg
+
+    print("FFmpeg не найден")
     return "ffmpeg"
 
 
@@ -85,6 +97,9 @@ class DropArea(QtWidgets.QListWidget):
         self.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
 
+        # Множество для хранения уникальных URL
+        self._url_set = set()
+
         # Минимальная высота — 50% экрана
         screen = QtWidgets.QApplication.primaryScreen()
         screen_size = screen.size()
@@ -97,14 +112,33 @@ class DropArea(QtWidgets.QListWidget):
             QtWidgets.QSizePolicy.Expanding,
         )
 
+    def clear(self):
+        """Переопределяем очистку чтобы сбрасывать множество URL"""
+        self._url_set.clear()
+        return super().clear()
+
     def show_context_menu(self, pos):
-        """Контекстное меню для удаления"""
+        """Контекстное меню — удаление на элементах, вставка на пустой области"""
         menu = QtWidgets.QMenu(self)
-        delete_action = menu.addAction("Удалить")
-        action = menu.exec_(self.mapToGlobal(pos))
-        if action == delete_action:
-            for item in self.selectedItems():
-                self.takeItem(self.row(item))
+
+        # Получаем элемент в позиции клика
+        item_at_pos = self.itemAt(pos)
+
+        if item_at_pos:
+            # Если кликнули на элемент — показываем удаление
+            delete_action = menu.addAction("Удалить")
+            action = menu.exec_(self.mapToGlobal(pos))
+
+            if action == delete_action:
+                self._url_set.discard(item_at_pos.text())
+                self.takeItem(self.row(item_at_pos))
+        else:
+            # Если кликнули на пустую область — показываем вставку
+            paste_action = menu.addAction("Вставить ссылку (Ctrl+V)")
+            action = menu.exec_(self.mapToGlobal(pos))
+
+            if action == paste_action:
+                self.paste_from_clipboard()
 
     def dragEnterEvent(self, event):  # noqa: N802
         if event.mimeData().hasUrls():
@@ -132,7 +166,19 @@ class DropArea(QtWidgets.QListWidget):
 
     def add_url(self, url_str: str):
         """Добавляет ссылку в список с подсказкой"""  # noqa: RUF002
+        if url_str in self._url_set:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Дубликат ссылки",
+                f"Ссылка уже добавлена в список:\n{url_str}",
+                QtWidgets.QMessageBox.Ok,
+            )
+            print("URL уже есть в множестве:", url_str)
+            return
+
+        self._url_set.add(url_str)
         item = QtWidgets.QListWidgetItem(url_str)
+        print("URL добавлен в множество:", url_str)
         item.setToolTip(
             "<p style='font-size:14pt; color:#444;'>"
             "Нажмите <b>правой кнопкой</b>, чтобы удалить ссылку из списка"
@@ -140,13 +186,57 @@ class DropArea(QtWidgets.QListWidget):
         )
         self.addItem(item)
 
+    def keyPressEvent(self, event):  # noqa: N802
+        """Обработка Ctrl+V для вставки ссылок"""
+        if (
+            event.key() == QtCore.Qt.Key_V
+            and event.modifiers() == QtCore.Qt.ControlModifier
+        ):
+            self.paste_from_clipboard()
+            return
+        super().keyPressEvent(event)
 
-class DownloadWorker(QtCore.QThread):
-    # Сигналы для передачи данных в GUI
-    progress_changed = QtCore.pyqtSignal(int)  # процент загрузки текущего видео
-    overall_progress = QtCore.pyqtSignal(int)  # общий прогресс (по списку)
-    finished = QtCore.pyqtSignal()  # завершение всех загрузок
-    error_occurred = QtCore.pyqtSignal(str)
+    def paste_from_clipboard(self):
+        """Вставляет ссылку из буфера обмена"""
+        clipboard = QtWidgets.QApplication.clipboard()
+        clipboard_text = clipboard.text().strip()
+
+        if clipboard_text.startswith("http"):
+            self.add_url(clipboard_text)
+        else:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Ошибка",
+                "В буфере обмена нет ссылки",  # noqa: RUF001
+                QtWidgets.QMessageBox.Ok,
+            )
+
+
+class ClickableLabel(QtWidgets.QLabel):
+    """QLabel с поддержкой клика для открытия директории"""
+
+    clicked = QtCore.pyqtSignal()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+
+    def mousePressEvent(self, event):  # noqa: N802
+        if event.button() == QtCore.Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+
+class DownloadTask(QtCore.QRunnable):
+    """Отдельная задача загрузки"""
+
+    class Signals(QtCore.QObject):
+        """Сигналы для передачи данных в GUI"""
+
+        progress = QtCore.pyqtSignal(int)  # процент загрузки текущего видео
+        overall_progress = QtCore.pyqtSignal(int)  # общий прогресс (по списку)
+        finished = QtCore.pyqtSignal()  # завершение всех загрузок
+        error_occurred = QtCore.pyqtSignal(str)  # ошибка загрузки
 
     def __init__(self, urls, fmt, download_dir):
         super().__init__()
@@ -154,44 +244,53 @@ class DownloadWorker(QtCore.QThread):
         self.fmt = fmt
         self.download_dir = download_dir
         self.failed_videos = []
+        self.signals = DownloadTask.Signals()
+
+    def progress_hook(self, d):
+        if d["status"] == "downloading":
+            percent_str = d.get("_percent_str", "0.0%").strip().replace("%", "")
+            percent_str = re.sub(r"\x1b\[[0-9;]*m", "", percent_str)
+            percent = float(percent_str)
+            try:
+                self.signals.progress.emit(int(percent))
+            except ValueError as e:
+                self.signals.overall_progress.emit(0)
+                print(f"ERROR:\n\t{e}")
+
+        elif d["status"] == "finished":
+            self.signals.progress.emit(100)
 
     def run(self):
         total = len(self.urls)
 
+        ydl_opts = {
+            "ffmpeg_location": get_ffmpeg_path(),
+            "outtmpl": str(self.download_dir / "%(title)s.%(ext)s"),
+            "format": self.fmt,  # "best[height<=1080]+bestaudio/best"
+            "progress_hooks": [self.progress_hook],
+            "socket_timeout": 30,
+            "retries": 3,
+            "quiet": False,
+            "noprogress": True,
+            "merge_output_format": "webm",
+            "continuedl": True,
+            "postprocessor_args": ["-v", "verbose"],
+        }
+
+        # Проверяем существование файла cookies
+
+        cookies_path = APP_DIR / "cookies.txt"
+        if cookies_path.exists():
+            ydl_opts["cookiefile"] = str(cookies_path)
+            print(f"Используются cookies из {cookies_path}")
+        else:
+            print("Файл cookies.txt не найден, продолжаем без cookies")
+
         for index, url in enumerate(self.urls, start=1):
-
-            def progress_hook(d):
-                if d["status"] == "downloading":
-                    percent_str = d.get("_percent_str", "0.0%").strip().replace("%", "")
-                    percent_str = re.sub(r"\x1b\[[0-9;]*m", "", percent_str)
-                    percent = float(percent_str)
-                    try:
-                        self.progress_changed.emit(int(percent))
-                    except ValueError as e:
-                        self.progress_changed.emit(0)
-                        print(f"ERROR:\n\t{e}")
-
-                elif d["status"] == "finished":
-                    self.progress_changed.emit(100)
-
-            ydl_opts = {
-                "ffmpeg_location": get_ffmpeg_path(),
-                "outtmpl": str(self.download_dir / "%(title)s.%(ext)s"),
-                "format": self.fmt,  # "best[height<=1080]+bestaudio/best"
-                "progress_hooks": [progress_hook],
-                "socket_timeout": 30,
-                "retries": 3,
-                "quiet": False,
-                "noprogress": True,
-                "merge_output_format": "webm",
-                "continuedl": True,
-                "postprocessor_args": ["-v", "verbose"],
-            }
-
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
-            except Exception:
+            except yt_dlp.utils.DownloadError:
                 # Попытка сменить контейнер на mkv, если mp4 не сработал
                 ydl_opts["merge_output_format"] = "mkv"
                 try:
@@ -200,20 +299,21 @@ class DownloadWorker(QtCore.QThread):
                 except Exception as e:
                     print(f"ERROR:\n\t{e}")
                     self.failed_videos.append(f"{url}")
-                    self.error_occurred.emit(url)
+                    self.signals.error_occurred.emit(url)
+
+                self.signals.progress.emit(100)
 
             # Обновляем общий прогресс после завершения текущего видео
             overall_percent = int((index / total) * 100)
-            self.overall_progress.emit(overall_percent)
+            self.signals.overall_progress.emit(overall_percent)
 
-        # Сохраняем все неудачные видео в текстовый файл
         if self.failed_videos:
             error_file = self.download_dir / "failed_downloads.txt"
             with error_file.open("a", encoding="utf-8") as f:
                 for line in self.failed_videos:
                     f.write(line + "\n")
 
-        self.finished.emit()  # сигнал о завершении всех загрузок  # noqa: RUF003
+        self.signals.finished.emit()
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -231,6 +331,9 @@ class MainWindow(QtWidgets.QWidget):
 
         # --- GUI элементы ---
 
+        # иконка
+        icon_path = resource_path("resources/icon.ico")
+        self.setWindowIcon(QtGui.QIcon(str(icon_path)))
         # Настройки
         settings_group = self.set_settings_block()
         # Ссылки
@@ -260,7 +363,10 @@ class MainWindow(QtWidgets.QWidget):
 
         # Сигналы
         self.download_button.clicked.connect(self.start_download)
-        self.worker = None
+
+        # Пул потоков автоматически управляет памятью!
+        self.thread_pool = QThreadPool()
+        self.thread_pool.setMaxThreadCount(1)  # 1 загрузка одновременно
 
     def set_style(self) -> None:
         """Установка стилизации"""
@@ -355,7 +461,7 @@ class MainWindow(QtWidgets.QWidget):
         self.dir_button = QtWidgets.QPushButton("Выбрать папку")
         self.dir_button.clicked.connect(self.choose_directory)
 
-        self.dir_label = QtWidgets.QLabel(str(self.download_dir))
+        self.dir_label = ClickableLabel(str(self.download_dir))
         self.dir_label.setWordWrap(True)
         self.dir_label.setStyleSheet("""
             background-color: #f0f0f0;
@@ -365,6 +471,8 @@ class MainWindow(QtWidgets.QWidget):
             color: #333333;
             font-size: 12pt;
         """)
+        self.dir_label.setToolTip("Нажмите, чтобы открыть директорию")
+        self.dir_label.clicked.connect(self.open_directory)
 
         self.combo_quality = QtWidgets.QComboBox()
         self.combo_quality.addItems(["До 1080p", "До 720p", "До 480p"])
@@ -416,6 +524,27 @@ class MainWindow(QtWidgets.QWidget):
         if path:  # если пользователь выбрал
             self.download_dir = pathlib.Path(path)
             self.dir_label.setText(str(self.download_dir))
+            self.dir_label.setToolTip("Нажмите, чтобы открыть директорию")
+
+    def open_directory(self):
+        """Открывает директорию загрузки в файловом менеджере"""
+
+        path = str(self.download_dir)
+
+        try:
+            if platform.system() == "Windows":
+                os.startfile(path)
+            elif platform.system() == "Darwin":  # macOS
+                subprocess.Popen(["open", path])
+            else:  # Linux
+                subprocess.Popen(["xdg-open", path])
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Ошибка",
+                f"Не удалось открыть директорию:\n{e}",
+                QtWidgets.QMessageBox.Ok,
+            )
 
     def change_font_size(self, size):
         font = self.font()  # получаем шрифт текущего окна
@@ -427,7 +556,7 @@ class MainWindow(QtWidgets.QWidget):
     def start_download(self):
         total = self.drop_area.count()
         if total == 0:
-            QtWidgets.QMessageBox.warning(self, "Ошибка", "Нет ссылок для скачивания")
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Нет ссылок")
             return
 
         choice = self.combo_quality.currentText()
@@ -450,15 +579,20 @@ class MainWindow(QtWidgets.QWidget):
         # Собираем все ссылки
         urls = [self.drop_area.item(i).text() for i in range(total)]
 
-        # Запускаем в отдельном потоке
-        self.worker = DownloadWorker(urls, fmt, self.download_dir)
-        self.worker.progress_changed.connect(self.progress_bar.setValue)
-        self.worker.overall_progress.connect(self.overall_bar.setValue)
-        self.worker.finished.connect(self.on_finished)
-        self.worker.error_occurred.connect(self.handle_error)
+        # Создаем задачу
+        task = DownloadTask(urls, fmt, self.download_dir)
+
+        # Подключаем сигналы
+        task.signals.progress.connect(self.progress_bar.setValue)
+        task.signals.overall_progress.connect(self.overall_bar.setValue)
+        task.signals.finished.connect(self.on_finished)
+        task.signals.error_occurred.connect(self.handle_error)
+
+        # QThreadPool сам управляет памятью!
+        # Потоки переиспользуются, утечки исключены
+        self.thread_pool.start(task)
 
         self.download_button.setEnabled(False)
-        self.worker.start()
 
     def handle_error(self):
         self.error_flag = True
