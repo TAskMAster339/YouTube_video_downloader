@@ -143,8 +143,8 @@ class TestDownloadButton:
 
     def test_download_button_with_mock_worker(self, main_window, mocker):
         """Тест сигнала клика кнопки."""
-        # Мокируем весь DownloadWorker
-        mock_worker = mocker.patch("src.app.DownloadWorker")
+        # Мокируем весь DownloadTask
+        mock_worker = mocker.patch("src.app.DownloadTask")
         mock_worker_instance = mocker.MagicMock()
         mock_worker.return_value = mock_worker_instance
 

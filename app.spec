@@ -4,7 +4,9 @@ a = Analysis(
     ['src/app.py'],
     pathex=[],
     binaries=[('ffmpeg.exe', '.')],  # FFmpeg включается в сборку
-    datas=[],
+    datas=[
+        ('resources/icon.ico', 'resources')
+    ],
     hiddenimports=[
         'yt_dlp.compat._legacy',
         'yt_dlp.compat',
@@ -41,5 +43,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='',
+    icon='resources/icon.ico',
 )

@@ -3,6 +3,9 @@ result/
 failed_downloads.txt
 *.log
 
+# Youtube data
+cookies.txt
+
 # ffmpeg
 ffmpeg.exe
 ffmpeg

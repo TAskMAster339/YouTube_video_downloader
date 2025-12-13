@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.app import DownloadWorker, DropArea, MainWindow
+from src.app import DownloadTask, DropArea, MainWindow
 
 # Добавляем src в sys.path
 sys.path.insert(0, str((Path(__file__).parent.parent / "src").resolve()))
@@ -118,14 +118,14 @@ def main_window(qapp, tmp_path, monkeypatch):
 
 @pytest.fixture
 def download_worker(tmp_path):
-    """Фикстура для DownloadWorker."""
+    """Фикстура для DownloadTask."""
     urls = [
         "https://www.youtube.com/watch?v=test1",
         "https://www.youtube.com/watch?v=test2",
     ]
     fmt = "best"
 
-    return DownloadWorker(urls, fmt, tmp_path)
+    return DownloadTask(urls, fmt, tmp_path)
 
 
 @pytest.fixture
