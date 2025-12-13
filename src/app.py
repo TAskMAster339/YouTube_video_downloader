@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+from urllib.parse import urlparse
 
 import yt_dlp
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -88,8 +89,23 @@ def ensure_download_dir_exists():
         return True
 
 
+def is_valid_url(url: str) -> bool:
+    """Простая валидация HTTP(S) URL."""
+    try:
+        parsed = urlparse(url.strip())
+        return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+    except Exception:
+        return False
+
+
 class DropArea(QtWidgets.QListWidget):
-    """Зона для drag & drop ссылок"""
+    """
+    Зона для drag & drop ссылок.
+
+    ВАЖНО: экземпляр этого виджета должен использоваться только из GUI-потока.
+    Все обращения к _url_set выполняются из потокобезопасного контекста Qt
+    (основной поток с event loop), поэтому дополнительная синхронизация не требуется.
+    """
 
     def __init__(self):
         super().__init__()
@@ -130,10 +146,12 @@ class DropArea(QtWidgets.QListWidget):
             action = menu.exec_(self.mapToGlobal(pos))
 
             if action == delete_action:
-                self._url_set.discard(item_at_pos.text())
+                url = item_at_pos.data(QtCore.Qt.UserRole)
+                if url:
+                    self._url_set.discard(url)
                 self.takeItem(self.row(item_at_pos))
         else:
-            # Если кликнули на пустую область — показываем вставку
+            # Если кликули на пустую область — показываем вставку
             paste_action = menu.addAction("Вставить ссылку (Ctrl+V)")
             action = menu.exec_(self.mapToGlobal(pos))
 
@@ -165,7 +183,7 @@ class DropArea(QtWidgets.QListWidget):
                     print("Dropped URL:", url_str)
 
     def add_url(self, url_str: str):
-        """Добавляет ссылку в список с подсказкой"""  # noqa: RUF002
+        """Добавляет ссылку в список с подсказкой"""
         if url_str in self._url_set:
             QtWidgets.QMessageBox.warning(
                 self,
@@ -177,7 +195,11 @@ class DropArea(QtWidgets.QListWidget):
             return
 
         self._url_set.add(url_str)
+
         item = QtWidgets.QListWidgetItem(url_str)
+        # Сохраняем «сырую» ссылку отдельно от отображаемого текста
+        item.setData(QtCore.Qt.UserRole, url_str)
+
         print("URL добавлен в множество:", url_str)
         item.setToolTip(
             "<p style='font-size:14pt; color:#444;'>"
@@ -201,7 +223,7 @@ class DropArea(QtWidgets.QListWidget):
         clipboard = QtWidgets.QApplication.clipboard()
         clipboard_text = clipboard.text().strip()
 
-        if clipboard_text.startswith("http"):
+        if is_valid_url(clipboard_text):
             self.add_url(clipboard_text)
         else:
             QtWidgets.QMessageBox.warning(
@@ -228,7 +250,24 @@ class ClickableLabel(QtWidgets.QLabel):
 
 
 class DownloadTask(QtCore.QRunnable):
-    """Отдельная задача загрузки"""
+    """
+    Represents a single download task to be executed in a background thread.
+
+    This class was refactored from using QThread to QRunnable to leverage the
+    QThreadPool infrastructure provided by Qt. By inheriting from QRunnable and
+    submitting instances to a QThreadPool, we can efficiently manage and execute
+    multiple concurrent download tasks without the overhead of manually managing
+    thread lifecycles.
+
+    Using QThreadPool with QRunnable improves maintainability and scalability,
+    as the thread pool automatically handles thread reuse and resource allocation.
+    This approach is particularly beneficial when handling many downloads in
+    parallel, as it avoids the pitfalls of creating and destroying QThread
+    objects for each task.
+
+    Signals are provided via the nested Signals class to communicate progress,
+    completion, and errors back to the GUI thread.
+    """
 
     class Signals(QtCore.QObject):
         """Сигналы для передачи данных в GUI"""
@@ -529,6 +568,26 @@ class MainWindow(QtWidgets.QWidget):
     def open_directory(self):
         """Открывает директорию загрузки в файловом менеджере"""
 
+        # Проверяем все условия сразу
+
+        if not self.download_dir.exists():
+            error_msg = "Директория не существует"
+        elif not self.download_dir.is_dir():
+            error_msg = "Указанный путь не является директорией"
+        elif not os.access(self.download_dir, os.R_OK | os.X_OK):
+            error_msg = "Недостаточно прав для открытия директории"
+        else:
+            error_msg = None
+
+        if error_msg:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Ошибка доступа",
+                f"{error_msg}:\n{self.download_dir}",
+                QtWidgets.QMessageBox.Ok,
+            )
+            return
+
         path = str(self.download_dir)
 
         try:
@@ -556,7 +615,7 @@ class MainWindow(QtWidgets.QWidget):
     def start_download(self):
         total = self.drop_area.count()
         if total == 0:
-            QtWidgets.QMessageBox.warning(self, "Ошибка", "Нет ссылок")
+            QtWidgets.QMessageBox.warning(self, "Ошибка", "Нет ссылок для скачивания")
             return
 
         choice = self.combo_quality.currentText()
@@ -588,8 +647,8 @@ class MainWindow(QtWidgets.QWidget):
         task.signals.finished.connect(self.on_finished)
         task.signals.error_occurred.connect(self.handle_error)
 
-        # QThreadPool сам управляет памятью!
-        # Потоки переиспользуются, утечки исключены
+        # QThreadPool reuses threads, but each task (QRunnable) is automatically deleted after completion.
+        # This prevents memory leaks as long as tasks are set up for auto-deletion (the default in PyQt5).
         self.thread_pool.start(task)
 
         self.download_button.setEnabled(False)
