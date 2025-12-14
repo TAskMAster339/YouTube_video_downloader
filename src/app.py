@@ -1,5 +1,6 @@
 __all__ = []
 
+import logging
 import os
 import pathlib
 import platform
@@ -7,6 +8,8 @@ import re
 import shutil
 import subprocess
 import sys
+import traceback
+from logging.handlers import RotatingFileHandler
 from urllib.parse import urlparse
 
 import yt_dlp
@@ -39,8 +42,52 @@ def get_app_directory() -> pathlib.Path:
     return app_dir
 
 
+def setup_logging():
+    """
+    Настраивает логирование в файл с ротацией.
+    Работает как в dev-режиме, так и в exe.
+    """
+    log_file = APP_DIR / "app.log"
+
+    # Создаём logger
+    logger = logging.getLogger("YouTubeDownloader")
+    logger.setLevel(logging.DEBUG)
+
+    # Создаём обработчик с ротацией
+    handler = RotatingFileHandler(
+        log_file,
+        maxBytes=5 * 1024 * 1024,  # 5 МБ
+        backupCount=5,
+        encoding="utf-8",
+    )
+
+    # Формат логов: время | уровень | сообщение
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)-8s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    handler.setFormatter(formatter)
+
+    # Добавляем обработчик
+    logger.addHandler(handler)
+
+    # Также выводим в консоль (для режима разработки)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    logger.info("=" * 50)
+    logger.info("Приложение запущено")
+    logger.info(f"Директория приложения: {APP_DIR}")  # noqa: G004
+    logger.info(f"Лог-файл: {log_file}")  # noqa: G004
+
+    return logger
+
+
 APP_DIR = get_app_directory()
 DOWNLOAD_DIR = APP_DIR / "result"
+
+logger = setup_logging()
 
 
 def get_ffmpeg_path():
@@ -48,18 +95,18 @@ def get_ffmpeg_path():
     try:
         ffmpeg_path = resource_path("ffmpeg.exe")
         if ffmpeg_path.exists():
-            print(f"Найден bundled FFmpeg: {ffmpeg_path}")
+            logger.info(f"Найден bundled FFmpeg: {ffmpeg_path}")  # noqa: G004
             return str(ffmpeg_path)
     except (AttributeError, FileNotFoundError, TypeError) as e:
-        print(f"Ошибка: {e}")
+        logger.error(f"Ошибка: {e}")  # noqa: G004
 
     # Fallback
     system_ffmpeg = shutil.which("ffmpeg")
     if system_ffmpeg:
-        print(f"Найден системный FFmpeg: {system_ffmpeg}")
+        logger.info(f"Найден системный FFmpeg: {system_ffmpeg}")  # noqa: G004
         return system_ffmpeg
 
-    print("FFmpeg не найден")
+    logger.warning("FFmpeg не найден")
     return "ffmpeg"
 
 
@@ -70,20 +117,20 @@ def ensure_download_dir_exists():
     """  # noqa: RUF002
     try:
         if not DOWNLOAD_DIR.exists():
-            print(f"[*] Creating download directory: {DOWNLOAD_DIR}")
+            logger.info(f"[*] Creating download directory: {DOWNLOAD_DIR}")  # noqa: G004
             DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-            print("[+] Directory created successfully")
+            logger.info("[+] Directory created successfully")
 
         # Проверяем разрешения
         if not os.access(DOWNLOAD_DIR, os.W_OK):
-            print("[!] No write permission")
+            logger.error("[!] No write permission")
             return False
 
     except PermissionError as e:
-        print(f"[!] Permission denied: {e}")
+        logger.error(f"[!] Permission denied: {e}")  # noqa: G004
         return False
     except Exception as e:
-        print(f"[!] Error: {e}")
+        logger.error(f"[!] Error: {e}")  # noqa: G004
         return False
     else:
         return True
@@ -96,6 +143,36 @@ def is_valid_url(url: str) -> bool:
         return parsed.scheme in ("http", "https") and bool(parsed.netloc)
     except Exception:
         return False
+
+
+class YTDLPLogger:
+    """
+    Кастомный logger для yt-dlp, который перенаправляет
+    все сообщения в Python logging.
+    """
+
+    def __init__(self, logger_instance):
+        self.logger = logger_instance
+
+    def debug(self, msg):
+        """yt-dlp передаёт сюда информационные сообщения"""
+        # yt-dlp использует debug для обычных info-сообщений
+        if msg.startswith("[debug] "):
+            self.logger.debug(msg)
+        else:
+            self.logger.info(msg)
+
+    def info(self, msg):
+        """Информационные сообщения"""
+        self.logger.info(msg)
+
+    def warning(self, msg):
+        """Предупреждения (WARNING prefix от yt-dlp)"""
+        self.logger.warning(msg)
+
+    def error(self, msg):
+        """Ошибки"""
+        self.logger.error(msg)
 
 
 class DropArea(QtWidgets.QListWidget):
@@ -149,6 +226,7 @@ class DropArea(QtWidgets.QListWidget):
                 url = item_at_pos.data(QtCore.Qt.UserRole)
                 if url:
                     self._url_set.discard(url)
+                    logger.info(f"URL удален из списка: {url}")  # noqa: G004
                 self.takeItem(self.row(item_at_pos))
         else:
             # Если кликули на пустую область — показываем вставку
@@ -180,7 +258,7 @@ class DropArea(QtWidgets.QListWidget):
                 url_str = url.toString().strip()
                 if url_str.startswith("http"):
                     self.add_url(url_str)
-                    print("Dropped URL:", url_str)
+                    logger.info(f"Добавлен URL через drag&drop: {url_str}")  # noqa: G004
 
     def add_url(self, url_str: str):
         """Добавляет ссылку в список с подсказкой"""
@@ -191,7 +269,7 @@ class DropArea(QtWidgets.QListWidget):
                 f"Ссылка уже добавлена в список:\n{url_str}",
                 QtWidgets.QMessageBox.Ok,
             )
-            print("URL уже есть в множестве:", url_str)
+            logger.warning(f"Попытка добавить дубликат URL: {url_str}")  # noqa: G004
             return
 
         self._url_set.add(url_str)
@@ -200,7 +278,7 @@ class DropArea(QtWidgets.QListWidget):
         # Сохраняем «сырую» ссылку отдельно от отображаемого текста
         item.setData(QtCore.Qt.UserRole, url_str)
 
-        print("URL добавлен в множество:", url_str)
+        logger.info(f"URL добавлен в список: {url_str}")  # noqa: G004
         item.setToolTip(
             "<p style='font-size:14pt; color:#444;'>"
             "Нажмите <b>правой кнопкой</b>, чтобы удалить ссылку из списка"
@@ -223,9 +301,13 @@ class DropArea(QtWidgets.QListWidget):
         clipboard = QtWidgets.QApplication.clipboard()
         clipboard_text = clipboard.text().strip()
 
+        logger.debug(f"Попытка вставить из буфера обмена: {clipboard_text[:50]}...")  # noqa: G004
+
         if is_valid_url(clipboard_text):
             self.add_url(clipboard_text)
+            logger.info(f"URL успешно вставлен из буфера обмена: {clipboard_text}")  # noqa: G004
         else:
+            logger.warning(f"Невалидная ссылка в буфере обмена: {clipboard_text[:100]}")  # noqa: G004
             QtWidgets.QMessageBox.warning(
                 self,
                 "Ошибка",
@@ -289,15 +371,16 @@ class DownloadTask(QtCore.QRunnable):
         if d["status"] == "downloading":
             percent_str = d.get("_percent_str", "0.0%").strip().replace("%", "")
             percent_str = re.sub(r"\x1b\[[0-9;]*m", "", percent_str)
-            percent = float(percent_str)
             try:
+                percent = float(percent_str)
                 self.signals.progress.emit(int(percent))
             except ValueError as e:
                 self.signals.overall_progress.emit(0)
-                print(f"ERROR:\n\t{e}")
+                logger.error(f"Ошибка парсинга процента загрузки: {e}")  # noqa: G004
 
         elif d["status"] == "finished":
             self.signals.progress.emit(100)
+            logger.debug("Загрузка файла завершена, начинается обработка")
 
     def run(self):
         total = len(self.urls)
@@ -314,6 +397,7 @@ class DownloadTask(QtCore.QRunnable):
             "merge_output_format": "webm",
             "continuedl": True,
             "postprocessor_args": ["-v", "verbose"],
+            "logger": YTDLPLogger(logger),
         }
 
         # Проверяем существование файла cookies
@@ -321,22 +405,26 @@ class DownloadTask(QtCore.QRunnable):
         cookies_path = APP_DIR / "cookies.txt"
         if cookies_path.exists():
             ydl_opts["cookiefile"] = str(cookies_path)
-            print(f"Используются cookies из {cookies_path}")
+            logger.info(f"Используются cookies из {cookies_path}")  # noqa: G004
         else:
-            print("Файл cookies.txt не найден, продолжаем без cookies")
+            logger.info("Файл cookies.txt не найден, продолжаем без cookies")
 
         for index, url in enumerate(self.urls, start=1):
+            logger.info(f"Начало загрузки [{index}/{total}]: {url}")  # noqa: G004
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
-            except yt_dlp.utils.DownloadError:
+                logger.info(f"Успешно загружено [{index}/{total}]: {url}")  # noqa: G004
+            except yt_dlp.utils.DownloadError as e:
                 # Попытка сменить контейнер на mkv, если mp4 не сработал
+                logger.warning(f"DownloadError для {url}, пробуем mkv: {e}")  # noqa: G004
                 ydl_opts["merge_output_format"] = "mkv"
                 try:
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([url])
+                    logger.info(f"Успешно загружено (mkv) [{index}/{total}]: {url}")  # noqa: G004
                 except Exception as e:
-                    print(f"ERROR:\n\t{e}")
+                    logger.error(f"Не удалось скачать {url}: {e}")  # noqa: G004
                     self.failed_videos.append(f"{url}")
                     self.signals.error_occurred.emit(url)
 
@@ -351,13 +439,17 @@ class DownloadTask(QtCore.QRunnable):
             with error_file.open("a", encoding="utf-8") as f:
                 for line in self.failed_videos:
                     f.write(line + "\n")
+            logger.warning(f"Ошибки загрузки записаны в {error_file}")  # noqa: G004
 
+        logger.info("Завершение задачи загрузки")
         self.signals.finished.emit()
 
 
 class MainWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
+        logger.info("Инициализация главного окна приложения")
+
         self.setWindowTitle("YouTube Downloader")
         self.resize(1200, 800)
         font = self.font()
@@ -365,6 +457,10 @@ class MainWindow(QtWidgets.QWidget):
         self.setFont(font)
         self.error_flag = False
         self.download_dir = DOWNLOAD_DIR
+
+        logger.info(
+            f"Установлена директория загрузки по умолчанию: {self.download_dir}"  # noqa: G004
+        )
 
         self.set_style()
 
@@ -406,6 +502,8 @@ class MainWindow(QtWidgets.QWidget):
         # Пул потоков автоматически управляет памятью!
         self.thread_pool = QThreadPool()
         self.thread_pool.setMaxThreadCount(1)  # 1 загрузка одновременно
+
+        logger.info("Главное окно успешно инициализировано")
 
     def set_style(self) -> None:
         """Установка стилизации"""
@@ -559,23 +657,34 @@ class MainWindow(QtWidgets.QWidget):
         return progress_group
 
     def choose_directory(self):
+        logger.info("Открыт диалог выбора директории")
         path = QtWidgets.QFileDialog.getExistingDirectory(self, "Выбрать папку")
         if path:  # если пользователь выбрал
+            old_dir = self.download_dir
             self.download_dir = pathlib.Path(path)
             self.dir_label.setText(str(self.download_dir))
             self.dir_label.setToolTip("Нажмите, чтобы открыть директорию")
+            logger.info(
+                f"Директория загрузки изменена: {old_dir} -> {self.download_dir}"  # noqa: G004
+            )
+        else:
+            logger.info("Выбор директории отменен пользователем")
 
     def open_directory(self):
         """Открывает директорию загрузки в файловом менеджере"""
 
         # Проверяем все условия сразу
+        logger.info(f"Попытка открыть директорию: {self.download_dir}")  # noqa: G004
 
         if not self.download_dir.exists():
             error_msg = "Директория не существует"
+            logger.error(f"{error_msg}: {self.download_dir}")  # noqa: G004
         elif not self.download_dir.is_dir():
             error_msg = "Указанный путь не является директорией"
+            logger.error(f"{error_msg}: {self.download_dir}")  # noqa: G004
         elif not os.access(self.download_dir, os.R_OK | os.X_OK):
             error_msg = "Недостаточно прав для открытия директории"
+            logger.error(f"{error_msg}: {self.download_dir}")  # noqa: G004
         else:
             error_msg = None
 
@@ -591,13 +700,19 @@ class MainWindow(QtWidgets.QWidget):
         path = str(self.download_dir)
 
         try:
-            if platform.system() == "Windows":
+            system = platform.system()
+            logger.debug(f"Открытие директории на платформе: {system}")  # noqa: G004
+
+            if system == "Windows":
                 os.startfile(path)
-            elif platform.system() == "Darwin":  # macOS
+            elif system == "Darwin":  # macOS
                 subprocess.Popen(["open", path])
             else:  # Linux
                 subprocess.Popen(["xdg-open", path])
+
+            logger.info(f"Директория успешно открыта: {path}")  # noqa: G004
         except Exception as e:
+            logger.error(f"Не удалось открыть директорию {path}: {e}", exc_info=True)  # noqa: G004, G201
             QtWidgets.QMessageBox.warning(
                 self,
                 "Ошибка",
@@ -611,11 +726,13 @@ class MainWindow(QtWidgets.QWidget):
         self.setFont(font)
         for child in self.findChildren(QtWidgets.QWidget):
             child.setFont(font)
+        logger.info(f"Размер шрифта изменен на {size}")  # noqa: G004
 
     def start_download(self):
         total = self.drop_area.count()
         if total == 0:
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Нет ссылок для скачивания")
+            logger.warning("Попытка запуска загрузки без ссылок")
             return
 
         choice = self.combo_quality.currentText()
@@ -629,7 +746,7 @@ class MainWindow(QtWidgets.QWidget):
         else:
             fmt = "video+bestaudio/best"
 
-        print("Выбран формат:", fmt)
+        logger.info(f"Запуск загрузки {total} видео, формат: {fmt}")  # noqa: G004
 
         # Обнуляем прогрессбары
         self.progress_bar.setValue(0)  # текущего видео
@@ -645,7 +762,7 @@ class MainWindow(QtWidgets.QWidget):
         task.signals.progress.connect(self.progress_bar.setValue)
         task.signals.overall_progress.connect(self.overall_bar.setValue)
         task.signals.finished.connect(self.on_finished)
-        task.signals.error_occurred.connect(self.handle_error)
+        task.signals.error_occurred.connect(lambda url: self.handle_error(url))
 
         # QThreadPool reuses threads, but each task (QRunnable) is automatically deleted after completion.
         # This prevents memory leaks as long as tasks are set up for auto-deletion (the default in PyQt5).
@@ -653,8 +770,10 @@ class MainWindow(QtWidgets.QWidget):
 
         self.download_button.setEnabled(False)
 
-    def handle_error(self):
+    def handle_error(self, url):
+        """Обработчик ошибок загрузки с логированием"""
         self.error_flag = True
+        logger.error(f"Ошибка при загрузке видео: {url}")  # noqa: G004
 
     def on_finished(self):
         # Системный звук
@@ -663,13 +782,14 @@ class MainWindow(QtWidgets.QWidget):
 
             winsound.MessageBeep()
         else:
-            print("\a")  # Linux/macOS beep
+            logger.info("\a")  # Linux/macOS beep
 
         self.drop_area.clear()
         self.download_button.setEnabled(True)
 
         # Сообщение пользователю
         if self.error_flag:
+            logger.warning("Загрузка завершена с ошибками")
             QtWidgets.QMessageBox.warning(
                 self,
                 "Завершено с ошибками",  # noqa: RUF001
@@ -677,6 +797,7 @@ class MainWindow(QtWidgets.QWidget):
                 "Список нескаченных ссылок сохранён в failed_downloads.txt",
             )
         else:
+            logger.info("Все видео успешно загружены")
             QtWidgets.QMessageBox.information(
                 self,
                 "Готово",
@@ -687,10 +808,39 @@ class MainWindow(QtWidgets.QWidget):
         self.error_flag = False
 
 
+def exception_hook(exctype, value, tb):
+    """Ловит необработанные исключения Qt и логирует их"""
+
+    tb_text = "".join(traceback.format_exception(exctype, value, tb))
+    logger.critical(f"Необработанное исключение:\n{tb_text}")  # noqa: G004
+
+    # Показываем пользователю
+    QtWidgets.QMessageBox.critical(
+        None,
+        "Критическая ошибка",
+        f"Произошла необработанная ошибка:\n{exctype.__name__}: {value}\n\n"
+        f"Подробности сохранены в app.log",
+    )
+
+    # Вызываем стандартный обработчик
+    sys.__excepthook__(exctype, value, tb)
+
+
 if __name__ == "__main__":
+    # Устанавливаем обработчик необработанных исключений
+    sys.excepthook = exception_hook
+
     ensure_download_dir_exists()
+    logger.info(f"Запуск приложения, версия PyQt5: {QtCore.PYQT_VERSION_STR}")  # noqa: G004
+
     app = QtWidgets.QApplication(sys.argv)
     app.setStyle("Fusion")
+    logger.info("QApplication создан, стиль: Fusion")
+
     window = MainWindow()
     window.show()
-    sys.exit(app.exec_())
+    logger.info("Главное окно отображено")
+
+    exit_code = app.exec_()
+    logger.info(f"Приложение завершено с кодом: {exit_code}")  # noqa: G004
+    sys.exit(exit_code)
