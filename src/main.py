@@ -39,6 +39,7 @@ def download_video(url: str, output_dir: str = "result") -> bool:
         "format": "best",
         "outtmpl": f"{output_dir}/%(title)s.%(ext)s",
         "quiet": True,
+        "extractor_args": {"youtube": {"lang": ["ru", "ru-RU"]}},
     }
 
     try:

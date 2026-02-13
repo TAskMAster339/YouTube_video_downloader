@@ -398,6 +398,7 @@ class DownloadTask(QtCore.QRunnable):
             "continuedl": True,
             "postprocessor_args": ["-v", "verbose"],
             "logger": YTDLPLogger(logger),
+            "extractor_args": {"youtube": {"lang": ["ru", "ru-RU"]}},
         }
 
         # Проверяем существование файла cookies
