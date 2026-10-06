@@ -12,14 +12,16 @@ import pytest
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows BAT scripts")
 @pytest.mark.parametrize("failure", [None, "size", "checksum"])
-def test_bat_update(tmp_path, failure):
+@pytest.mark.parametrize("installed", [False, True])
+def test_bat_update(tmp_path, failure, installed):
     root = Path(__file__).resolve().parents[1]
     folder = tmp_path / "User's folder ! тест"
     folder.mkdir()
     old = b"MZ" + b"old" * 1024
     new = b"MZ" + b"new" * 1024
     app = folder / "YouTube_Downloader.exe"
-    app.write_bytes(old)
+    if installed:
+        app.write_bytes(old)
     checksum = hashlib.sha256(new if failure != "checksum" else old).hexdigest()
 
     class Handler(BaseHTTPRequestHandler):
@@ -65,9 +67,17 @@ def test_bat_update(tmp_path, failure):
         result = subprocess.run(["cmd.exe", "/d", "/c", str(updater)], input=b"\n",
                                 capture_output=True, timeout=90)
         assert result.returncode == (1 if failure else 0), result.stdout.decode("utf-8", errors="replace") + result.stderr.decode("utf-8", errors="replace")
-        assert app.read_bytes() == (old if failure else new)
-        if not failure:
+        if failure and not installed:
+            assert not app.exists()
+        else:
+            assert app.read_bytes() == (old if failure else new)
+        if not failure and installed:
             assert (folder / "YouTube_Downloader.exe.backup").read_bytes() == old
+        if not installed:
+            assert not (folder / "YouTube_Downloader.exe.backup").exists()
+        if not failure:
+            message = b'Application updated successfully!' if installed else b'Application installed successfully!'
+            assert message in result.stdout
     finally:
         server.shutdown()
         server.server_close()

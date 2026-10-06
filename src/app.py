@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import traceback
+import threading
 from logging.handlers import RotatingFileHandler
 from urllib.parse import urlparse
 
@@ -47,19 +48,19 @@ def setup_logging():
     Настраивает логирование в файл с ротацией.
     Работает как в dev-режиме, так и в exe.
     """
-    log_file = APP_DIR / "app.log"
+    log_file = DATA_DIR / "app.log"
 
     # Создаём logger
     logger = logging.getLogger("YouTubeDownloader")
     logger.setLevel(logging.DEBUG)
 
     # Создаём обработчик с ротацией
-    handler = RotatingFileHandler(
-        log_file,
-        maxBytes=5 * 1024 * 1024,  # 5 МБ
-        backupCount=5,
-        encoding="utf-8",
-    )
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(
+            log_file, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
+    except OSError:
+        handler = logging.NullHandler()
 
     # Формат логов: время | уровень | сообщение
     formatter = logging.Formatter(
@@ -85,7 +86,10 @@ def setup_logging():
 
 
 APP_DIR = get_app_directory()
-DOWNLOAD_DIR = APP_DIR / "result"
+DATA_DIR = pathlib.Path(QtCore.QStandardPaths.writableLocation(
+    QtCore.QStandardPaths.GenericDataLocation) or pathlib.Path.home()) / "YouTubeDownloader"
+DOWNLOAD_DIR = pathlib.Path(QtCore.QStandardPaths.writableLocation(
+    QtCore.QStandardPaths.MoviesLocation) or pathlib.Path.home() / "Videos") / "YouTubeDownloader"
 
 logger = setup_logging()
 
@@ -345,6 +349,25 @@ class ClickableLabel(QtWidgets.QLabel):
         super().mousePressEvent(event)
 
 
+def describe_download_error(error):
+    text = str(error).lower()
+    if isinstance(error, PermissionError) or any(word in text for word in ("permission denied", "access is denied", "winerror 5")):
+        return "Нет доступа к папке. Выберите другую папку для загрузки."
+    if any(word in text for word in ("no space left", "disk full", "errno 28", "winerror 112")):
+        return "Недостаточно места на диске. Освободите место и повторите загрузку."
+    if any(word in text for word in ("timed out", "timeout", "connection", "network", "resolve", "offline")):
+        return "Не удалось подключиться. Проверьте интернет и повторите загрузку."
+    if any(word in text for word in ("private", "unavailable", "not available", "sign in", "403", "age-restricted")):
+        return "Видео недоступно или требует входа в YouTube."
+    if any(word in text for word in ("ffmpeg", "postprocess", "codec", "format")):
+        return "Не удалось обработать видео. Попробуйте другое качество или обновите приложение."
+    return "Не удалось скачать видео. Повторите попытку или обновите приложение."
+
+
+class DownloadCancelled(Exception):
+    """Cooperative cancellation at a downloader boundary."""
+
+
 class DownloadTask(QtCore.QRunnable):
     """
     Represents a single download task to be executed in a background thread.
@@ -378,10 +401,22 @@ class DownloadTask(QtCore.QRunnable):
         self.urls = urls
         self.fmt = fmt
         self.download_dir = download_dir
+        self.successful_urls = []
         self.failed_videos = []
+        self.failure_report_saved = False
+        self.errors = {}
         self.signals = DownloadTask.Signals()
+        self.cancel_event = threading.Event()
+
+    def cancel(self):
+        self.cancel_event.set()
+
+    def check_cancelled(self, *args, **kwargs):
+        if self.cancel_event.is_set():
+            raise DownloadCancelled()
 
     def progress_hook(self, d):
+        self.check_cancelled()
         if d["status"] == "downloading":
             percent_str = d.get("_percent_str", "0.0%").strip().replace("%", "")
             percent_str = re.sub(r"\x1b\[[0-9;]*m", "", percent_str)
@@ -397,24 +432,45 @@ class DownloadTask(QtCore.QRunnable):
             logger.debug("Загрузка файла завершена, начинается обработка")
 
     def run(self):
+        try:
+            self._run_downloads()
+        except DownloadCancelled:
+            logger.info("Загрузка остановлена пользователем")
+        except Exception as error:
+            logger.exception("Неожиданная ошибка загрузки")
+            for url in self.urls:
+                if url not in self.failed_videos and url not in self.successful_urls:
+                    self.failed_videos.append(url)
+                    self.errors[url] = describe_download_error(error)
+                    self.signals.error_occurred.emit(url)
+        finally:
+            self.signals.finished.emit()
+
+    def _run_downloads(self):
+        self.check_cancelled()
         total = len(self.urls)
 
         ydl_opts = {
             "ffmpeg_location": get_ffmpeg_path(),
             "js_runtimes": get_js_runtimes(),
-            "outtmpl": str(self.download_dir / "%(title)s.%(ext)s"),
+            "outtmpl": str(self.download_dir / "%(title).180B [%(extractor_key)s-%(id)s].%(ext)s"),
+            "windowsfilenames": sys.platform == "win32",
             "format": self.fmt,  # "best[height<=1080]+bestaudio/best"
             "progress_hooks": [self.progress_hook],
+            "postprocessor_hooks": [self.check_cancelled],
+            "match_filter": self.check_cancelled,
             "socket_timeout": 30,
             "retries": 3,
             "quiet": False,
             "noprogress": True,
-            "merge_output_format": "webm",
             "continuedl": True,
+            "noplaylist": True,
             "postprocessor_args": ["-v", "verbose"],
             "logger": YTDLPLogger(logger),
             "extractor_args": {"youtube": {"lang": ["ru", "ru-RU"]}},
         }
+
+        self.download_dir.mkdir(parents=True, exist_ok=True)
 
         # Проверяем существование файла cookies
 
@@ -426,25 +482,24 @@ class DownloadTask(QtCore.QRunnable):
             logger.info("Файл cookies.txt не найден, продолжаем без cookies")
 
         for index, url in enumerate(self.urls, start=1):
+            self.check_cancelled()
             logger.info(f"Начало загрузки [{index}/{total}]: {url}")  # noqa: G004
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
-                logger.info(f"Успешно загружено [{index}/{total}]: {url}")  # noqa: G004
-            except yt_dlp.utils.DownloadError as e:
-                # Попытка сменить контейнер на mkv, если mp4 не сработал
-                logger.warning(f"DownloadError для {url}, пробуем mkv: {e}")  # noqa: G004
-                ydl_opts["merge_output_format"] = "mkv"
-                try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([url])
-                    logger.info(f"Успешно загружено (mkv) [{index}/{total}]: {url}")  # noqa: G004
-                except Exception as e:
-                    logger.error(f"Не удалось скачать {url}: {e}")  # noqa: G004
-                    self.failed_videos.append(f"{url}")
-                    self.signals.error_occurred.emit(url)
-
-                self.signals.progress.emit(100)
+                    result = ydl.download([url])
+                    if result:
+                        raise yt_dlp.utils.DownloadError("Загрузчик сообщил об ошибке")
+                self.successful_urls.append(url)
+                logger.info(f"Успешно загружено [{index}/{total}]: {url}")
+            except DownloadCancelled:
+                raise
+            except Exception as e:
+                self.check_cancelled()
+                reason = describe_download_error(e)
+                self.errors[url] = reason
+                logger.exception("Не удалось скачать %s: %s", url, reason)
+                self.failed_videos.append(url)
+                self.signals.error_occurred.emit(url)
 
             # Обновляем общий прогресс после завершения текущего видео
             overall_percent = int((index / total) * 100)
@@ -452,13 +507,16 @@ class DownloadTask(QtCore.QRunnable):
 
         if self.failed_videos:
             error_file = self.download_dir / "failed_downloads.txt"
-            with error_file.open("a", encoding="utf-8") as f:
-                for line in self.failed_videos:
-                    f.write(line + "\n")
-            logger.warning(f"Ошибки загрузки записаны в {error_file}")  # noqa: G004
+            try:
+                with error_file.open("a", encoding="utf-8") as f:
+                    for line in self.failed_videos:
+                        f.write(line + "\n")
+                self.failure_report_saved = True
+                logger.warning(f"Ошибки загрузки записаны в {error_file}")
+            except OSError:
+                logger.exception("Не удалось сохранить список ошибок; ссылки сохранены в очереди")
 
         logger.info("Завершение задачи загрузки")
-        self.signals.finished.emit()
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -472,6 +530,8 @@ class MainWindow(QtWidgets.QWidget):
         font.setPointSize(DEAFULT_FONT_SIZE)
         self.setFont(font)
         self.error_flag = False
+        self.active_task = None
+        self.close_after_download = False
         self.download_dir = DOWNLOAD_DIR
 
         logger.info(
@@ -514,6 +574,8 @@ class MainWindow(QtWidgets.QWidget):
 
         # Сигналы
         self.download_button.clicked.connect(self.start_download)
+        self.cancel_shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Esc"), self)
+        self.cancel_shortcut.activated.connect(self.request_cancel)
 
         # Пул потоков автоматически управляет памятью!
         self.thread_pool = QThreadPool()
@@ -744,7 +806,29 @@ class MainWindow(QtWidgets.QWidget):
             child.setFont(font)
         logger.info(f"Размер шрифта изменен на {size}")  # noqa: G004
 
+    def request_cancel(self):
+        if self.active_task is not None:
+            answer = QtWidgets.QMessageBox.question(
+                self, "Остановить загрузку?", "Остановить скачивание? Незавершённые ссылки останутся в списке.",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+            if answer == QtWidgets.QMessageBox.Yes:
+                self.active_task.cancel()
+
+    def closeEvent(self, event):
+        if self.active_task is not None:
+            answer = QtWidgets.QMessageBox.question(
+                self, "Загрузка продолжается", "Остановить загрузку и закрыть приложение?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+            event.ignore()
+            if answer == QtWidgets.QMessageBox.Yes:
+                self.close_after_download = True
+                self.active_task.cancel()
+            return
+        super().closeEvent(event)
+
     def start_download(self):
+        if self.active_task is not None:
+            return
         total = self.drop_area.count()
         if total == 0:
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Нет ссылок для скачивания")
@@ -773,6 +857,7 @@ class MainWindow(QtWidgets.QWidget):
 
         # Создаем задачу
         task = DownloadTask(urls, fmt, self.download_dir)
+        self.active_task = task
 
         # Подключаем сигналы
         task.signals.progress.connect(self.progress_bar.setValue)
@@ -800,17 +885,34 @@ class MainWindow(QtWidgets.QWidget):
         else:
             logger.info("\a")  # Linux/macOS beep
 
-        self.drop_area.clear()
+        task = self.active_task
+        if task is not None:
+            successful = set(task.successful_urls)
+            for index in range(self.drop_area.count() - 1, -1, -1):
+                item = self.drop_area.item(index)
+                url = item.data(QtCore.Qt.UserRole)
+                if url in successful:
+                    self.drop_area._url_set.discard(url)
+                    self.drop_area.takeItem(index)
+        cancelled = task is not None and task.cancel_event.is_set()
+        self.active_task = None
         self.download_button.setEnabled(True)
+        if self.close_after_download:
+            self.close()
+            return
 
         # Сообщение пользователю
-        if self.error_flag:
+        if cancelled:
+            QtWidgets.QMessageBox.information(self, "Остановлено", "Загрузка остановлена. Незавершённые ссылки остались в списке.")
+        elif self.error_flag:
             logger.warning("Загрузка завершена с ошибками")
             QtWidgets.QMessageBox.warning(
                 self,
                 "Завершено с ошибками",  # noqa: RUF001
                 "Некоторые видео не удалось скачать. "
-                "Список нескаченных ссылок сохранён в failed_downloads.txt",
+                "Неудачные ссылки остались в списке. "
+                + ("\n".join(dict.fromkeys(task.errors.values())) if task is not None else "")
+                + "\nПодробности — в журнале приложения.",
             )
         else:
             logger.info("Все видео успешно загружены")
@@ -835,7 +937,7 @@ def exception_hook(exctype, value, tb):
         None,
         "Критическая ошибка",
         f"Произошла необработанная ошибка:\n{exctype.__name__}: {value}\n\n"
-        f"Подробности сохранены в app.log",
+        f"Подробности доступны в журнале: {DATA_DIR / 'app.log'}",
     )
 
     # Вызываем стандартный обработчик

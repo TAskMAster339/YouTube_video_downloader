@@ -113,6 +113,10 @@ def main_window(qapp, tmp_path, monkeypatch):
 
     window = MainWindow()
     yield window
+    # DownloadTask stubs do not emit completion; do not open a shutdown dialog
+    # during fixture disposal. Real worker shutdown is tested separately.
+    if isinstance(window.active_task, MagicMock):
+        window.active_task = None
     window.close()
 
 

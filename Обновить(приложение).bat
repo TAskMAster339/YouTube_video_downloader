@@ -19,6 +19,10 @@ set JSON_FILE=%SCRIPT_DIR%release.json
 set URL_FILE=%SCRIPT_DIR%download_url.txt
 set VER_FILE=%SCRIPT_DIR%version.txt
 
+REM Install beside this script when absent; otherwise update the existing EXE.
+set "INSTALL_MODE=install"
+if exist "%APP_PATH%" set "INSTALL_MODE=update"
+
 REM ==================== ВЫВОД ====================
 cls
 echo.
@@ -28,6 +32,11 @@ echo ============================================================
 echo.
 
 REM ==================== ШАГ 1: Получаем информацию о релизе ====================
+if "%INSTALL_MODE%"=="install" (
+    echo [*] Application not found. Installing into this folder...
+) else (
+    echo [*] Application found. Updating the existing version...
+)
 echo [*] Checking GitHub for updates...
 
 set API_URL=https://api.github.com/repos/%GITHUB_OWNER%/%GITHUB_REPO%/releases/latest
@@ -178,7 +187,11 @@ if errorlevel 1 (
 )
 
 if exist "%APP_PATH%" (
-    echo [+] Update installed successfully!
+    if "%INSTALL_MODE%"=="install" (
+        echo [+] Application installed successfully!
+    ) else (
+        echo [+] Application updated successfully!
+    )
 ) else (
     echo [!] ERROR: Installation verification failed
     del /f /q "%JSON_FILE%" "%URL_FILE%" "%VER_FILE%" 2>nul

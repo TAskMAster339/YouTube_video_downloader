@@ -37,8 +37,9 @@ def download_video(url: str, output_dir: str = "result") -> bool:
     """
     ydl_opts = {
         "format": "best",
-        "outtmpl": f"{output_dir}/%(title)s.%(ext)s",
+        "outtmpl": f"{output_dir}/%(title).180B [%(extractor_key)s-%(id)s].%(ext)s",
         "quiet": True,
+        "noplaylist": True,
         "js_runtimes": {"deno": {"path": find_deno_bin()}},
         "extractor_args": {"youtube": {"lang": ["ru", "ru-RU"]}},
     }
