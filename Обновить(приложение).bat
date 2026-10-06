@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 REM YouTube Downloader Auto-Update Script
 REM Загрузить последний exe с GitHub и заменить текущий
 REM Исправленная версия
@@ -131,7 +132,7 @@ if not exist "%TEMP_FILE%" (
 echo [+] Download complete
 echo.
 
-powershell -NoProfile -Command "try { $ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $json=Get-Content -LiteralPath $env:JSON_FILE -Raw | ConvertFrom-Json; $asset=$json.assets | Where-Object name -eq 'SHA256SUMS.txt' | Select-Object -First 1; if ($asset) { $text=(Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -TimeoutSec 30).Content; $match=[regex]::Match($text,'(?im)^([a-f0-9]{64})\s+\*?YouTube_Downloader\.exe\s*$'); $sha=[Security.Cryptography.SHA256]::Create(); $stream=[IO.File]::OpenRead($env:TEMP_FILE); try {$hash=[BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','')} finally {$stream.Dispose(); $sha.Dispose()}; if (!$match.Success -or $hash -ne $match.Groups[1].Value) {exit 1} } } catch {exit 1}"
+powershell -NoProfile -Command "try { $ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $json=Get-Content -LiteralPath $env:JSON_FILE -Raw | ConvertFrom-Json; $asset=$json.assets | Where-Object name -eq 'SHA256SUMS.txt' | Select-Object -First 1; if ($asset) { $text=(Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -TimeoutSec 30).Content; if ($text -is [byte[]]) { $text=[Text.Encoding]::UTF8.GetString($text) }; $text=$text.TrimStart([char]0xFEFF); $match=[regex]::Match($text,'(?im)^([a-f0-9]{64})\s+\*?YouTube_Downloader\.exe\s*$'); $sha=[Security.Cryptography.SHA256]::Create(); $stream=[IO.File]::OpenRead($env:TEMP_FILE); try {$hash=[BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','')} finally {$stream.Dispose(); $sha.Dispose()}; if (!$match.Success -or $hash -ne $match.Groups[1].Value) {exit 1} } } catch {exit 1}"
 if errorlevel 1 (
     echo [!] ERROR: Checksum validation failed. Existing application kept.
     del /f /q "%TEMP_FILE%" 2>nul

@@ -13,7 +13,8 @@ import pytest
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows BAT scripts")
 @pytest.mark.parametrize("failure", [None, "size", "checksum"])
 @pytest.mark.parametrize("installed", [False, True])
-def test_bat_update(tmp_path, failure, installed):
+@pytest.mark.parametrize("binary_checksum", [False, True])
+def test_bat_update(tmp_path, failure, installed, binary_checksum):
     root = Path(__file__).resolve().parents[1]
     folder = tmp_path / "User's folder ! тест"
     folder.mkdir()
@@ -47,7 +48,10 @@ def test_bat_update(tmp_path, failure, installed):
                 self.send_error(404)
                 return
             self.send_response(200)
-            self.send_header("Content-Type", "application/json" if self.path == "/release" else "text/plain")
+            content_type = "application/json" if self.path == "/release" else "text/plain"
+            if self.path == "/hash" and binary_checksum:
+                content_type = "application/octet-stream"
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
