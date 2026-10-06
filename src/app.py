@@ -349,6 +349,17 @@ class ClickableLabel(QtWidgets.QLabel):
         super().mousePressEvent(event)
 
 
+def prefer_russian_audio(fmt):
+    """Prefer available Russian audio, then the marked original track."""
+    video = fmt.split('+bestaudio', 1)[0] if '+bestaudio' in fmt else 'bestvideo'
+    height = re.search(r'\[height<=\d+\]', video)
+    combined = 'best' + (height.group() if height else '')
+    return (
+        f'{video}+bestaudio[language^=ru]/{combined}[language^=ru]/'
+        f'{video}+bestaudio[format_note*=original]/{combined}[format_note*=original]/'
+        f'{fmt}')
+
+
 def describe_download_error(error):
     text = str(error).lower()
     if isinstance(error, PermissionError) or any(word in text for word in ("permission denied", "access is denied", "winerror 5")):
@@ -455,7 +466,7 @@ class DownloadTask(QtCore.QRunnable):
             "js_runtimes": get_js_runtimes(),
             "outtmpl": str(self.download_dir / "%(title).180B [%(extractor_key)s-%(id)s].%(ext)s"),
             "windowsfilenames": sys.platform == "win32",
-            "format": self.fmt,  # "best[height<=1080]+bestaudio/best"
+            "format": prefer_russian_audio(self.fmt),
             "progress_hooks": [self.progress_hook],
             "postprocessor_hooks": [self.check_cancelled],
             "match_filter": self.check_cancelled,
