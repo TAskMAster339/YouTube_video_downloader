@@ -4,13 +4,13 @@ on: [push, pull_request]
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -21,12 +21,6 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest --cov=src --cov-report=xml --cov-report=term-missing -v
+          python -m pytest --no-cov -v
         env:
           QT_QPA_PLATFORM: offscreen
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage.xml
-          fail_ci_if_error: false

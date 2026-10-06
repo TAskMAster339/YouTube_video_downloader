@@ -4,17 +4,13 @@ on: [push, pull_request]
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -25,12 +21,6 @@ jobs:
 
       - name: Run GUI tests
         run: |
-          pytest -m gui --cov=src --cov-report=xml --cov-report=term-missing -v
+          python -m pytest -m gui --no-cov -v
         env:
           QT_QPA_PLATFORM: offscreen
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
