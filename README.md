@@ -57,9 +57,9 @@ Simply download `YouTube_Downloader.exe` and run it. That's it!
 
 **Automatic Updates:**
 
-- Download `Обновить(приложение).bat` to the same folder as `YouTube_Downloader.exe`
+- Download `update-app.bat` to the same folder as `YouTube_Downloader.exe`
 - Close the application before updating
-- Run `update.bat` to check for and install updates
+- Run `update-app.bat` to check for and install updates
 - The script will automatically:
   - Check GitHub for new versions
   - Download the latest version
@@ -250,10 +250,14 @@ The EXE updater verifies the download and keeps a backup of the previous version
 `Обновить.bat` is for source checkouts: it runs `git pull` in its own directory.
 `Запустить.bat` launches the EXE beside it without requiring Python.
 
+Release assets use ASCII filenames: `update-app.bat`, `update-source.bat`, and
+`launch.bat`, respectively for the application updater, source updater, and launcher.
+`windows-scripts.zip` contains the same scripts with their original Russian filenames.
+
 ### For Users:
 
 - Check the [Releases page](https://github.com/TAskMAster339/YouTube_video_downloader/releases) regularly
-- Or use `Обновить(приложение).bat` script to auto-update
+- Or use `update-app.bat` from the release to auto-update
 
 ### For Developers:
 
