@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import yt_dlp
-
+from deno import find_deno_bin
 
 
 def read_links(filename: str = "links.txt") -> list[str]:
@@ -39,6 +39,7 @@ def download_video(url: str, output_dir: str = "result") -> bool:
         "format": "best",
         "outtmpl": f"{output_dir}/%(title)s.%(ext)s",
         "quiet": True,
+        "js_runtimes": {"deno": {"path": find_deno_bin()}},
         "extractor_args": {"youtube": {"lang": ["ru", "ru-RU"]}},
     }
 

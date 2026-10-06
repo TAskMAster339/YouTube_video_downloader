@@ -45,6 +45,9 @@ class TestDownloadTask:
         # Запускаем worker (в тестах запускается синхронно)
         download_worker.run()
 
+        options = mock_ytdlp.call_args.args[0]
+        assert "deno" in options["js_runtimes"]
+
         # Проверяем, что finished сигнал был эмитирован
         assert len(download_worker.urls) == 2
 

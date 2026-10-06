@@ -57,7 +57,8 @@ Simply download `YouTube_Downloader.exe` and run it. That's it!
 
 **Automatic Updates:**
 
-- Download `update.bat` to the same folder as `YouTube_Downloader.exe`
+- Download `Обновить(приложение).bat` to the same folder as `YouTube_Downloader.exe`
+- Close the application before updating
 - Run `update.bat` to check for and install updates
 - The script will automatically:
   - Check GitHub for new versions
@@ -192,6 +193,11 @@ sudo apt install ffmpeg
 
 #### Running the GUI Application
 
+For YouTube, install the full `yt-dlp[default]` dependencies and Deno (both are
+included in `requirements.txt`). The Windows build bundles Deno and the EJS
+challenge solver, so end users do not need to install a JavaScript runtime.
+Build from the activated environment with `python -m PyInstaller app.spec`.
+
 ```bash
 # Windows
 py src/app.py
@@ -236,6 +242,13 @@ python3 src/app.py
 ## 🔄 Automatic Updates
 
 The project automatically checks for yt-dlp updates and creates new releases on GitHub.
+
+Pushes to `main` and manual runs of `auto-build-release.yml` also build and publish
+a release even when the yt-dlp version has not changed. Each build has a unique
+version tag; the `latest` release includes the EXE, BAT scripts and SHA-256 checksum.
+The EXE updater verifies the download and keeps a backup of the previous version.
+`Обновить.bat` is for source checkouts: it runs `git pull` in its own directory.
+`Запустить.bat` launches the EXE beside it without requiring Python.
 
 ### For Users:
 

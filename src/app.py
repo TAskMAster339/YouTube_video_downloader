@@ -110,6 +110,20 @@ def get_ffmpeg_path():
     return "ffmpeg"
 
 
+def get_js_runtimes():
+    """Use the bundled JavaScript runtime for YouTube challenges."""
+    bundled = resource_path("deno.exe")
+    if bundled.is_file():
+        return {"deno": {"path": str(bundled)}}
+    try:
+        from deno import find_deno_bin
+
+        return {"deno": {"path": find_deno_bin()}}
+    except (ImportError, FileNotFoundError):
+        pass
+    return {"deno": {}}
+
+
 def ensure_download_dir_exists():
     """
     Гарантирует что директория для загрузок существует.
@@ -387,6 +401,7 @@ class DownloadTask(QtCore.QRunnable):
 
         ydl_opts = {
             "ffmpeg_location": get_ffmpeg_path(),
+            "js_runtimes": get_js_runtimes(),
             "outtmpl": str(self.download_dir / "%(title)s.%(ext)s"),
             "format": self.fmt,  # "best[height<=1080]+bestaudio/best"
             "progress_hooks": [self.progress_hook],
@@ -813,7 +828,7 @@ def exception_hook(exctype, value, tb):
     """Ловит необработанные исключения Qt и логирует их"""
 
     tb_text = "".join(traceback.format_exception(exctype, value, tb))
-    logger.critical(f"Необработанное исключение:\n{tb_text}")  # noqa: G004
+    logger.critical(f"Необработанное исключение:\n{tb_text}")
 
     # Показываем пользователю
     QtWidgets.QMessageBox.critical(

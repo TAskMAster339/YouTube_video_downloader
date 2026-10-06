@@ -1,12 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
+from deno import find_deno_bin
+from PyInstaller.utils.hooks import collect_data_files, copy_metadata
+
+deno_exe = find_deno_bin()
 
 a = Analysis(
     ['src/app.py'],
     pathex=[],
-    binaries=[('ffmpeg.exe', '.')],  # FFmpeg включается в сборку
+    binaries=[('ffmpeg.exe', '.'), (str(deno_exe), '.')],
     datas=[
         ('resources/icon.ico', 'resources')
-    ],
+    ] + collect_data_files('yt_dlp_ejs') + copy_metadata('yt-dlp-ejs'),
     hiddenimports=[
         'yt_dlp.compat._legacy',
         'yt_dlp.compat',

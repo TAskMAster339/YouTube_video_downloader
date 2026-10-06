@@ -1,10 +1,16 @@
 name: Auto Build and Release on yt-dlp Update
 
 on:
+  push:
+    branches: [main]
   schedule:
     # Проверка каждый день в 03:00 UTC (06:00 MSK)
     - cron: "0 3 * * *"
   workflow_dispatch: # Ручной запуск
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -30,7 +36,7 @@ jobs:
       - name: Check for yt-dlp updates
         id: check
         run: |
-          CURRENT=$(grep "^yt-dlp" requirements.txt | sed 's/yt-dlp==//g')
+          CURRENT=$(grep "^yt-dlp" requirements.txt | sed 's/.*==//g')
           echo "current_version=$CURRENT" >> $GITHUB_OUTPUT
 
           python -m pip install --upgrade pip
@@ -47,7 +53,7 @@ jobs:
 
   update-and-build:
     needs: check-update
-    if: needs.check-update.outputs.update_available == 'true'
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'schedule' || needs.check-update.outputs.update_available == 'true')
     runs-on: windows-latest
 
     steps:
@@ -63,7 +69,7 @@ jobs:
         run: |
           $current = "${{ needs.check-update.outputs.current_version }}"
           $latest = "${{ needs.check-update.outputs.latest_version }}"
-          (Get-Content requirements.txt) -replace "yt-dlp==$current", "yt-dlp==$latest" | Set-Content requirements.txt
+          (Get-Content requirements.txt) -replace '^yt-dlp(?:\[default\])?==.*$', "yt-dlp[default]==$latest" | Set-Content requirements.txt
           echo "Updated: yt-dlp $current → $latest"
           cat requirements.txt | findstr yt-dlp
 
@@ -74,29 +80,25 @@ jobs:
 
       - name: Download FFmpeg
         run: |
-          echo "Downloading FFmpeg..."
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile "ffmpeg.zip"
+          Expand-Archive -LiteralPath "ffmpeg.zip" -DestinationPath "ffmpeg-download"
+          $binary = Get-ChildItem -LiteralPath "ffmpeg-download" -Filter ffmpeg.exe -Recurse | Select-Object -First 1
+          if (!$binary) { throw "FFmpeg executable missing from archive" }
+          Copy-Item -LiteralPath $binary.FullName -Destination "ffmpeg.exe" -Force
+          & .\ffmpeg.exe -version
+          if ($LASTEXITCODE -ne 0) { throw "FFmpeg validation failed" }
 
-          Invoke-WebRequest -Uri "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" `
-            -OutFile "ffmpeg.zip" -ErrorAction SilentlyContinue
-
-          if (Test-Path "ffmpeg.zip") {
-            echo "FFmpeg downloaded successfully"
-            Expand-Archive -Path "ffmpeg.zip" -DestinationPath "."
-            $folder = Get-ChildItem -Directory -Filter "ffmpeg-*" | Select-Object -First 1
-            if ($folder) {
-              Move-Item -Path "$($folder.FullName)\bin\ffmpeg.exe" -Destination "ffmpeg.exe" -Force
-              Remove-Item $folder.FullName -Recurse -Force
-            }
-            Remove-Item "ffmpeg.zip" -Force
-            echo "✅ FFmpeg ready"
-          } else {
-            echo "⚠️ Could not download FFmpeg, will use system version"
-          }
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest --no-cov
 
       - name: Build executable with PyInstaller
         run: |
           echo "Building with PyInstaller..."
-          pyinstaller app.spec
+          python -m PyInstaller --noconfirm --clean app.spec
+          if ($LASTEXITCODE -ne 0) { throw "Build failed" }
 
           if (Test-Path "dist/YouTube_Downloader.exe") {
             echo "✅ Build successful"
@@ -106,18 +108,24 @@ jobs:
             exit 1
           }
 
+      - name: Prepare release assets
+        run: |
+          Copy-Item -LiteralPath "Обновить(приложение).bat", "Обновить.bat", "Запустить.bat" -Destination dist
+          $hash = (Get-FileHash -LiteralPath dist/YouTube_Downloader.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  YouTube_Downloader.exe" | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: YouTube_Downloader
-          path: dist/YouTube_Downloader.exe
+          path: dist/*
           retention-days: 30
 
       - name: Create versioned release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.check-update.outputs.latest_version }}
-          name: v${{ needs.check-update.outputs.latest_version }}
+          tag_name: v${{ needs.check-update.outputs.latest_version }}-build.${{ github.run_number }}.${{ github.run_attempt }}
+          name: v${{ needs.check-update.outputs.latest_version }} (build ${{ github.run_number }}.${{ github.run_attempt }})
           body: |
             ## 🚀 YouTube Downloader v${{ needs.check-update.outputs.latest_version }}
 
@@ -137,6 +145,10 @@ jobs:
             - [View all releases](https://github.com/${{ github.repository }}/releases)
           files: |
             dist/YouTube_Downloader.exe
+            dist/*.bat
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
         env:
@@ -159,6 +171,10 @@ jobs:
             📖 [View all releases](https://github.com/${{ github.repository }}/releases)
           files: |
             dist/YouTube_Downloader.exe
+            dist/*.bat
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
           make_latest: true
@@ -166,12 +182,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit and push updated requirements.txt
+        if: needs.check-update.outputs.update_available == 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add requirements.txt
-          git commit -m "chore: update yt-dlp to ${{ needs.check-update.outputs.latest_version }}" || echo "No changes to commit"
+          git commit -m "chore: update yt-dlp to ${{ needs.check-update.outputs.latest_version }}"
+          if ($LASTEXITCODE -ne 0) { throw "Commit failed" }
           git push
+          if ($LASTEXITCODE -ne 0) { throw "Push failed (check branch protection)" }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
